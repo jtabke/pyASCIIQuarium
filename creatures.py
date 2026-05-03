@@ -6,8 +6,11 @@ callbacks (fish_collision, bubble_collision, shark_death, fish_update)
 also live here.
 """
 
+from __future__ import annotations
+
 import random
 import time
+from typing import Callable
 
 from assets import (
     WATER_LINE_SEGMENTS,
@@ -27,7 +30,7 @@ from entity import Entity, shape_dimensions
 
 
 # --- Environment Creation ---
-def create_environment(anim):
+def create_environment(anim: "Animation") -> None:
     water_line_segment_shapes = WATER_LINE_SEGMENTS
     segment_size = len(water_line_segment_shapes[0])
     segment_repeat = anim.width // segment_size + 2
@@ -45,7 +48,7 @@ def create_environment(anim):
         )
         anim.add_entity(entity)
 
-def create_castle(anim):
+def create_castle(anim: "Animation") -> None:
     castle_image = CASTLE_SHAPE
     castle_mask = CASTLE_MASK
     castle_height = castle_image.count('\n')
@@ -64,12 +67,12 @@ def create_castle(anim):
     anim.add_entity(entity)
 
 # --- Seaweed ---
-def create_all_seaweed(anim):
+def create_all_seaweed(anim: "Animation") -> None:
     seaweed_count = max(1, anim.width // 15)
     for _ in range(seaweed_count):
         create_seaweed(None, anim)
 
-def create_seaweed(old_seaweed, anim):
+def create_seaweed(old_seaweed: Entity | None, anim: "Animation") -> None:
     # This function now acts as both the initial creator and the death callback
     height = random.randint(3, 6)
     seaweed_frames = ['', ''] # Two frames for animation
@@ -107,7 +110,7 @@ def create_seaweed(old_seaweed, anim):
     anim.add_entity(entity)
 
 # --- Bubbles ---
-def create_bubble(fish, anim):
+def create_bubble(fish: Entity, anim: "Animation") -> None:
     fish_w, fish_h = fish.width(), fish.height()
     fish_x, fish_y, fish_z = fish.position()
     fish_vx = fish.vx # Get fish's horizontal speed
@@ -134,14 +137,14 @@ def create_bubble(fish, anim):
     )
     anim.add_entity(entity)
 
-def bubble_collision(bubble, anim):
+def bubble_collision(bubble: Entity, anim: "Animation") -> None:
     for col_obj in bubble.collisions:
         if col_obj.type == 'waterline':
             bubble.kill()
             break
 
 # --- Fish ---
-def create_all_fish(anim):
+def create_all_fish(anim: "Animation") -> None:
     # Fish density scales with the underwater area; ~350 cells per fish
     # is the Perl original's heuristic.
     underwater_height = max(1, anim.height - 9)
@@ -149,7 +152,7 @@ def create_all_fish(anim):
     for _ in range(fish_count):
         create_fish(None, anim)
 
-def create_fish(old_fish, anim):
+def create_fish(old_fish: Entity | None, anim: "Animation") -> None:
     """ Choose between old and new fish styles based on classic mode. """
     if anim.use_new_fish:
         if random.randint(0, 11) > 8:
@@ -160,13 +163,13 @@ def create_fish(old_fish, anim):
         create_old_fish_entity(anim)
 
 # (Keep add_new_fish_data, add_old_fish_data, add_fish_entity functions separate for clarity)
-def get_new_fish_data():
+def get_new_fish_data() -> list:
     return NEW_FISH_DATA
 
-def get_old_fish_data():
+def get_old_fish_data() -> list:
     return OLD_FISH_DATA
 
-def rand_color_mask(color_mask_template, palette=None):
+def rand_color_mask(color_mask_template: str | None, palette: list[str] | None = None) -> str | None:
     """ Replaces digits 1-9 in a mask template with random color chars.
 
     `palette` defaults to the original 12-color set; pass anim.fish_palette
@@ -186,7 +189,7 @@ def rand_color_mask(color_mask_template, palette=None):
     return mask
 
 
-def create_fish_entity(anim, fish_data):
+def create_fish_entity(anim: "Animation", fish_data: list) -> None:
     """ Creates a single fish entity from the provided data list. """
     fish_num = random.randrange(len(fish_data))
     shape_l, mask_l, shape_r, mask_r = fish_data[fish_num]
@@ -240,20 +243,20 @@ def create_fish_entity(anim, fish_data):
     )
     anim.add_entity(entity)
 
-def create_new_fish_entity(anim):
+def create_new_fish_entity(anim: "Animation") -> None:
      create_fish_entity(anim, get_new_fish_data())
 
-def create_old_fish_entity(anim):
+def create_old_fish_entity(anim: "Animation") -> None:
      create_fish_entity(anim, get_old_fish_data())
 
 # --- Fish Callbacks ---
-def fish_update(fish, anim):
+def fish_update(fish: Entity, anim: "Animation") -> None:
     """ Custom update logic for fish (e.g., creating bubbles). """
     # Add a bubble occasionally
     if random.randint(0, 100) > 97:
         create_bubble(fish, anim)
 
-def fish_collision(fish, anim):
+def fish_collision(fish: Entity, anim: "Animation") -> None:
     """ Fish collision handler. """
     for col_obj in fish.collisions:
          # Only check collision with 'teeth' type (from shark)
@@ -265,7 +268,7 @@ def fish_collision(fish, anim):
                  break # Fish is dead, stop checking
 
 # --- Splat Effect ---
-def create_splat(anim, x, y, z, splat_char='*'):
+def create_splat(anim: "Animation", x: float, y: float, z: float, splat_char: str = '*') -> None:
     if splat_char == '*':
         splat_shapes = SPLAT_SHAPES
     else:
@@ -286,7 +289,7 @@ def create_splat(anim, x, y, z, splat_char='*'):
     anim.add_entity(entity)
 
 # --- Shark ---
-def create_shark(old_ent, anim):
+def create_shark(old_ent: Entity | None, anim: "Animation") -> None:
     shark_image = SHARK_SHAPES
     shark_mask = SHARK_MASKS
 
@@ -348,7 +351,7 @@ def create_shark(old_ent, anim):
     anim.add_entity(shark)
 
 
-def shark_death(shark, anim, teeth_entity):
+def shark_death(shark: Entity, anim: "Animation", teeth_entity: Entity | None) -> None:
     """ Shark death callback: kill the associated teeth entity and spawn a new random object. """
     if teeth_entity:
          teeth_entity.kill()
@@ -357,7 +360,7 @@ def shark_death(shark, anim, teeth_entity):
 
 
 # --- Ship ---
-def create_ship(old_ent, anim):
+def create_ship(old_ent: Entity | None, anim: "Animation") -> None:
     ship_image = SHIP_SHAPES
     ship_mask = SHIP_MASKS
 
@@ -389,7 +392,7 @@ def create_ship(old_ent, anim):
     anim.add_entity(entity)
 
 # --- Whale ---
-def create_whale(old_ent, anim):
+def create_whale(old_ent: Entity | None, anim: "Animation") -> None:
     whale_image = WHALE_SHAPES
     whale_mask = WHALE_MASKS
     water_spout_frames = WATER_SPOUT_FRAMES
@@ -451,19 +454,19 @@ def create_whale(old_ent, anim):
 
 
 # --- Sea Monster ---
-def create_monster(old_ent, anim):
+def create_monster(old_ent: Entity | None, anim: "Animation") -> None:
     if anim.use_new_monster:
         create_new_monster_entity(anim)
     else:
         create_old_monster_entity(anim)
 
-def get_new_monster_data():
+def get_new_monster_data() -> tuple:
     return NEW_MONSTER_FRAMES, NEW_MONSTER_MASKS
 
-def get_old_monster_data():
+def get_old_monster_data() -> tuple:
     return OLD_MONSTER_FRAMES, OLD_MONSTER_MASKS
 
-def create_monster_entity(anim, monster_data, monster_mask_data):
+def create_monster_entity(anim: "Animation", monster_data: list, monster_mask_data: list) -> None:
     """ Creates a sea monster entity. """
     dir = random.randrange(2) # 0 = left, 1 = right
     shapes = monster_data[dir]
@@ -498,16 +501,16 @@ def create_monster_entity(anim, monster_data, monster_mask_data):
     )
     anim.add_entity(entity)
 
-def create_new_monster_entity(anim):
+def create_new_monster_entity(anim: "Animation") -> None:
     data, masks = get_new_monster_data()
     create_monster_entity(anim, data, masks)
 
-def create_old_monster_entity(anim):
+def create_old_monster_entity(anim: "Animation") -> None:
     data, masks = get_old_monster_data()
     create_monster_entity(anim, data, masks)
 
 # --- Big Fish ---
-def create_big_fish(old_ent, anim):
+def create_big_fish(old_ent: Entity | None, anim: "Animation") -> None:
     """ Choose between big_fish_1 and big_fish_2 based on classic mode. """
     if anim.use_new_fish and random.randint(0, 2) > 0:  # 2/3 chance for type 2
         create_big_fish_2(old_ent, anim)
@@ -515,7 +518,7 @@ def create_big_fish(old_ent, anim):
         create_big_fish_1(old_ent, anim)
 
 
-def create_big_fish_1(old_ent, anim):
+def create_big_fish_1(old_ent: Entity | None, anim: "Animation") -> None:
     big_fish_image = BIG_FISH_1_SHAPES
     big_fish_mask = BIG_FISH_1_MASKS
 
@@ -559,7 +562,7 @@ def create_big_fish_1(old_ent, anim):
     anim.add_entity(entity)
 
 
-def create_big_fish_2(old_ent, anim):
+def create_big_fish_2(old_ent: Entity | None, anim: "Animation") -> None:
     big_fish_image = BIG_FISH_2_SHAPES
     big_fish_mask = BIG_FISH_2_MASKS
 
@@ -610,7 +613,7 @@ RANDOM_OBJECT_POOL = [
     create_shark,
 ]
 
-def create_random_object(dead_object, anim):
+def create_random_object(dead_object: Entity | None, anim: "Animation") -> None:
     """ Selects and creates a new random object, usually when one dies offscreen. """
     # The dead_object isn't actually used here, but matches Perl callback signature
     random_func = random.choice(RANDOM_OBJECT_POOL)

@@ -5,6 +5,8 @@ classic-mode toggles. Calls into creatures.* to populate or rebuild
 the tank — those are the only outward dependencies.
 """
 
+from __future__ import annotations
+
 import curses
 import random
 import time
@@ -22,7 +24,13 @@ from entity import Entity
 
 # --- Animation Class ---
 class Animation:
-    def __init__(self, stdscr, classic_mode=False, fps=20.0, use_color=True):
+    def __init__(
+        self,
+        stdscr,
+        classic_mode: bool = False,
+        fps: float = 20.0,
+        use_color: bool = True,
+    ) -> None:
         self.stdscr = stdscr
         self.height, self.width = stdscr.getmaxyx()
         self.entities = []
@@ -92,30 +100,30 @@ class Animation:
                     pass
 
 
-    def get_color_attr(self, color_char):
-         """ Get curses attribute for a color character, falling back to default. """
-         return self.color_pairs.get(color_char, self.color_pairs.get(color_char.lower(), self.color_pairs['default']))
+    def get_color_attr(self, color_char: str) -> int:
+        """ curses attr for a color char, falling back to the default pair. """
+        return self.color_pairs.get(color_char, self.color_pairs.get(color_char.lower(), self.color_pairs['default']))
 
-    def add_entity(self, entity):
+    def add_entity(self, entity: Entity) -> None:
         self.entities.append(entity)
         self.needs_redraw = True
 
-    def remove_entity(self, entity):
+    def remove_entity(self, entity: Entity) -> None:
         try:
             self.entities.remove(entity)
             self.needs_redraw = True
         except ValueError:
-            pass # Entity already removed
+            pass
 
-    def get_entities_of_type(self, entity_type):
+    def get_entities_of_type(self, entity_type: str) -> list[Entity]:
         return [e for e in self.entities if e.type == entity_type]
 
-    def remove_all_entities(self):
+    def remove_all_entities(self) -> None:
         self.entities = []
         self.needs_redraw = True
 
-    def update_term_size(self):
-        """ Check and update terminal size. """
+    def update_term_size(self) -> bool:
+        """ Resync to the current terminal size. Returns True if changed. """
         new_height, new_width = self.stdscr.getmaxyx()
         if (new_height, new_width) != self._last_term_size:
             self.height = new_height
@@ -127,7 +135,7 @@ class Animation:
             return True
         return False
 
-    def check_collisions(self):
+    def check_collisions(self) -> None:
         """ Generic axis-aligned bbox overlap among physical entities.
 
         Each entity opts in via physical=True and decides what to do
@@ -150,8 +158,8 @@ class Animation:
                     if b.coll_handler:
                         b.collisions.append(a)
 
-    def animate(self):
-        """ Update all entities. """
+    def animate(self) -> None:
+        """ Update all entities, run collision handlers, reap the dead. """
         if self.paused:
             return
 
@@ -184,7 +192,7 @@ class Animation:
             self.remove_entity(entity) # Remove from list
 
 
-    def draw_screen(self):
+    def draw_screen(self) -> None:
         """ Draw all entities onto the screen, sorted back-to-front by z. """
         self.stdscr.erase()
         sorted_entities = sorted(self.entities, key=lambda e: e.z, reverse=True)
@@ -289,7 +297,7 @@ class Animation:
     _GEOMETRY_TYPES = {'waterline', 'seaweed'}
     _GEOMETRY_NAMES = {'castle'}
 
-    def _populate(self):
+    def _populate(self) -> None:
         """ Create the static + initial random-object population. """
         create_environment(self)
         create_castle(self)
@@ -299,7 +307,7 @@ class Animation:
         self.paused = False
         self.needs_redraw = True
 
-    def _rebuild_geometry(self):
+    def _rebuild_geometry(self) -> None:
         """ Resize-friendly partial reset.
 
         Drop only the entities that depend on terminal dimensions
@@ -325,10 +333,10 @@ class Animation:
             create_fish(None, self)
         self.needs_redraw = True
 
-    def _too_small(self):
+    def _too_small(self) -> bool:
         return self.height < self.MIN_HEIGHT or self.width < self.MIN_WIDTH
 
-    def _show_too_small(self):
+    def _show_too_small(self) -> None:
         self.stdscr.erase()
         msg = (f"terminal {self.width}x{self.height} is too small "
                f"(need >= {self.MIN_WIDTH}x{self.MIN_HEIGHT})")
@@ -341,7 +349,7 @@ class Animation:
             pass
         self.stdscr.refresh()
 
-    def run(self):
+    def run(self) -> None:
         """ Main animation loop. """
         if not self._too_small():
             self._populate()

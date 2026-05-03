@@ -1,19 +1,22 @@
 """Argument parsing, signal handling, curses lifecycle, console-script
 entry point."""
 
+from __future__ import annotations
+
 import argparse
 import atexit
 import curses
 import random
 import signal
 import sys
+from typing import Sequence
 
 from animation import Animation
 from constants import VERSION
 
 
 # --- Signal Handling ---
-def signal_handler(sig, frame):
+def signal_handler(sig: int, frame) -> None:
     """ Cleanly exit on Ctrl+C; SIGWINCH is intentionally NOT handled
     here so ncurses' own handler stays in place. (When a Python signal
     handler is registered for SIGWINCH it shadows the ncurses one, and
@@ -25,7 +28,7 @@ def signal_handler(sig, frame):
 
 
 # --- Cleanup Function ---
-def cleanup():
+def cleanup() -> None:
     """ Restore terminal settings.
 
     By the time atexit fires, curses.wrapper() has usually already called
@@ -42,7 +45,7 @@ def cleanup():
 
 
 # --- Main Execution ---
-def parse_args(argv=None):
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="asciiquarium",
         description=f"Asciiquarium v{VERSION} - ASCII Aquarium Animation",
@@ -62,7 +65,7 @@ def parse_args(argv=None):
         parser.error("--fps must be positive")
     return args
 
-def main(stdscr, args):
+def main(stdscr, args: argparse.Namespace) -> int:
     # --- Curses Setup ---
     stdscr.clear()
     curses.curs_set(0) # Hide cursor
@@ -79,7 +82,7 @@ def main(stdscr, args):
     return 0
 
 
-def cli_entry():
+def cli_entry() -> None:
     """ Console-script entry point (referenced from pyproject.toml). """
     # Parse args before entering curses so --help / --version print cleanly.
     cli_args = parse_args()

@@ -6,13 +6,20 @@ draw_screen(). Entity itself never calls curses — it just exposes
 geometry and the current frame's lines.
 """
 
+from __future__ import annotations
+
 import random
 import time
+from typing import Any, Callable, Optional, Sequence, Union
 
 from constants import TICK_RATE
 
+Shape = Union[str, list[str]]
+Position = tuple[float, float, float]
+Velocity = Sequence[float]  # (vx, vy, vz) or (vx, vy, vz, anim_modifier)
 
-def shape_dimensions(shape_str):
+
+def shape_dimensions(shape_str: str | None) -> tuple[int, int]:
     """ (width, height) of a shape string without constructing an Entity.
 
     Mirrors Entity._update_dimensions: outer newlines are stripped,
@@ -26,16 +33,30 @@ def shape_dimensions(shape_str):
     return (max((len(line) for line in lines), default=0), len(lines))
 
 
-
 # --- Entity Class ---
 class Entity:
-    def __init__(self, name="", type="", shape=None, color_map=None,
-                 pos=(0, 0, 0), velocity=(0, 0, 0), anim_speed=0.0,
-                 default_color_char='c', die_offscreen=False,
-                 die_time=None, die_frame=None, death_cb=None, death_cb_args=None,
-                 update_cb=None, update_cb_args=None,
-                 coll_handler=None, physical=False, transparent_char=' ',
-                 auto_trans=False):
+    def __init__(
+        self,
+        name: str = "",
+        type: str = "",
+        shape: Shape | None = None,
+        color_map: Shape | None = None,
+        pos: Position = (0, 0, 0),
+        velocity: Velocity = (0, 0, 0),
+        anim_speed: float = 0.0,
+        default_color_char: str = 'c',
+        die_offscreen: bool = False,
+        die_time: float | None = None,
+        die_frame: int | None = None,
+        death_cb: Optional[Callable[..., Any]] = None,
+        death_cb_args: list | None = None,
+        update_cb: Optional[Callable[..., Any]] = None,
+        update_cb_args: list | None = None,
+        coll_handler: Optional[Callable[..., Any]] = None,
+        physical: bool = False,
+        transparent_char: str = ' ',
+        auto_trans: bool = False,
+    ) -> None:
 
         self.name = name if name else f"{type}_{random.randint(1000, 9999)}"
         self.type = type
@@ -96,7 +117,7 @@ class Entity:
         self.collisions = []
 
     @staticmethod
-    def _mark_exterior_transparent(shape_str):
+    def _mark_exterior_transparent(shape_str: str | None) -> str | None:
         """ Replace each line's leading and trailing spaces with '?'
         (the universal transparent char). Interior spaces keep being
         rendered as opaque, so a fish silhouette occludes whatever is
@@ -112,7 +133,7 @@ class Entity:
             out.append('?' * leading + stripped + '?' * trailing)
         return '\n'.join(out)
 
-    def _update_dimensions(self):
+    def _update_dimensions(self) -> None:
         """ Recalculate dimensions based on the current frame's shape. """
         shape_str = self.shapes[self.current_frame]
         if not shape_str:
@@ -126,34 +147,32 @@ class Entity:
         self._height = len(self._lines)
         self._width = max(len(line) for line in self._lines) if self._lines else 0
 
-        # Process color map for the current frame
         color_map_str = self.color_maps[self.current_frame]
         if color_map_str:
             self._color_lines = color_map_str.strip('\n').split('\n')
         else:
-            self._color_lines = [] # No specific color map for this frame
+            self._color_lines = []
 
-
-    def get_shape_and_colors(self):
-        """ Returns the lines and color lines for the current frame """
+    def get_shape_and_colors(self) -> tuple[list[str], list[str]]:
+        """ Lines and color lines for the current frame. """
         return self._lines, self._color_lines
 
-    def width(self):
+    def width(self) -> int:
         return self._width
 
-    def height(self):
+    def height(self) -> int:
         return self._height
 
-    def size(self):
-         return (self._width, self._height)
+    def size(self) -> tuple[int, int]:
+        return (self._width, self._height)
 
-    def position(self):
+    def position(self) -> Position:
         return (self.x, self.y, self.z)
 
-    def kill(self):
+    def kill(self) -> None:
         self.is_alive = False
 
-    def update(self, animation_instance, dt):
+    def update(self, animation_instance: "Animation", dt: float) -> None:
         """ Update entity state (position, animation frame, life status).
 
         `dt` is the real seconds elapsed since the last animate() call;
@@ -196,19 +215,17 @@ class Entity:
              # Pass self and the animation instance to the callback
              self.update_cb(self, animation_instance, *self.update_cb_args)
 
-    def is_offscreen(self, screen_width, screen_height):
-        """ Check if the entity is completely offscreen. """
-        # Consider the entity's bounding box
+    def is_offscreen(self, screen_width: int, screen_height: int) -> bool:
+        """ True if the entity's bounding box is wholly off the screen. """
         if (self.x + self.width()) <= 0 or self.x >= screen_width:
             return True
         if (self.y + self.height()) <= 0 or self.y >= screen_height:
             return True
         return False
 
-    def handle_collisions(self, animation_instance):
-        """ Call the collision handler if defined and collisions occurred. """
+    def handle_collisions(self, animation_instance: "Animation") -> None:
+        """ Call the collision handler if any collisions are pending. """
         if self.coll_handler and self.collisions:
-             self.coll_handler(self, animation_instance)
-        # Clear collisions for the next frame
+            self.coll_handler(self, animation_instance)
         self.collisions = []
 
