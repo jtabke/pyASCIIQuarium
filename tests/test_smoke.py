@@ -128,6 +128,27 @@ class SmokeTest(unittest.TestCase):
             anim.animate()
             anim.draw_screen()
 
+    def test_bubble_pops_at_waterline(self):
+        """ Generic-bbox collision detection must let bubbles bump into
+        the waterline and trigger their coll_handler — previously the
+        check_collisions function early-returned when no shark teeth
+        were on screen, so bubbles never popped. """
+        import asciiquarium
+        anim = asciiquarium.Animation(FakeStdscr(h=30, w=120), fps=20.0)
+        asciiquarium.create_environment(anim)
+        asciiquarium.create_old_fish_entity(anim)
+        fish = next(e for e in anim.entities if e.type == 'fish')
+        fish.x, fish.y = 50, 20
+        # Spawn a bubble directly under the waterline (waterlines are
+        # at y=5..8) and warp it up so the next tick overlaps.
+        asciiquarium.create_bubble(fish, anim)
+        bubble = next(e for e in anim.entities if e.type == 'bubble')
+        bubble.y = 8  # Sitting on the lowest waterline row.
+        anim.animate()
+        # bubble_collision should have killed it; the entity is removed
+        # in the same animate() pass.
+        self.assertNotIn(bubble, anim.entities)
+
     def test_exterior_transparency_preserves_interior(self):
         """ When auto_trans=True, leading/trailing spaces on each line
         should be marked transparent ('?') but interior spaces should

@@ -431,45 +431,27 @@ class Animation:
         return False
 
     def check_collisions(self):
-         """ Basic collision detection placeholder. """
-         physical_entities = [e for e in self.entities if e.physical and e.is_alive]
-         # Very simple example: Check shark teeth against fish
-         teeth_list = [e for e in physical_entities if e.type == 'teeth']
-         fish_list = [e for e in physical_entities if e.type == 'fish']
+        """ Generic axis-aligned bbox overlap among physical entities.
 
-         if not teeth_list:
-              return
+        Each entity opts in via physical=True and decides what to do
+        with collisions in its coll_handler (e.g. shark teeth vs fish,
+        bubble vs waterline).
+        """
+        physical = [e for e in self.entities if e.physical and e.is_alive]
+        boxes = []
+        for e in physical:
+            x, y, _ = e.position()
+            ix, iy = int(x), int(y)
+            boxes.append((ix, iy, ix + e.width(), iy + e.height(), e))
 
-         teeth = teeth_list[0] # Assuming only one teeth entity
-         tx, ty, _ = map(int, teeth.position())
-
-         for fish in fish_list:
-              fx, fy, _ = map(int, fish.position())
-              fw, fh = fish.width(), fish.height()
-              # Simple point-in-rectangle check for the teeth hitting the fish bounding box
-              if fx <= tx < fx + fw and fy <= ty < fy + fh:
-                   # Add collision info to both entities (if they have handlers)
-                   if fish.coll_handler:
-                        fish.collisions.append(teeth)
-                   if teeth.coll_handler:
-                       teeth.collisions.append(fish)
-
-         # More general collision detection (e.g., rect overlap) would go here
-         # for i, e1 in enumerate(physical_entities):
-         #    for e2 in physical_entities[i+1:]:
-         #       # Check for overlap between e1 and e2 bounding boxes
-         #       if self.check_overlap(e1, e2):
-         #           if e1.coll_handler: e1.collisions.append(e2)
-         #           if e2.coll_handler: e2.collisions.append(e1)
-
-    # def check_overlap(self, e1, e2):
-    #     """ Check if the bounding boxes of two entities overlap. """
-    #     x1, y1, _ = map(int, e1.position())
-    #     w1, h1 = e1.width(), e1.height()
-    #     x2, y2, _ = map(int, e2.position())
-    #     w2, h2 = e2.width(), e2.height()
-    #     return not (x1 + w1 < x2 or x2 + w2 < x1 or y1 + h1 < y2 or y2 + h2 < y1)
-
+        for i, (ax1, ay1, ax2, ay2, a) in enumerate(boxes):
+            for j in range(i + 1, len(boxes)):
+                bx1, by1, bx2, by2, b = boxes[j]
+                if ax1 < bx2 and bx1 < ax2 and ay1 < by2 and by1 < ay2:
+                    if a.coll_handler:
+                        a.collisions.append(b)
+                    if b.coll_handler:
+                        b.collisions.append(a)
 
     def animate(self):
         """ Update all entities. """
@@ -490,16 +472,15 @@ class Animation:
         # Perform collision detection *after* all updates
         self.check_collisions()
 
-        # Handle collisions and remove dead entities
-        dead_entities = []
+        # Run collision handlers for entities still alive — these may
+        # decide to kill themselves (e.g. a bubble that hits the
+        # waterline), which is why we collect dead entities AFTER
+        # this pass rather than before.
         for entity in self.entities:
-            if not entity.is_alive:
-                dead_entities.append(entity)
-            else:
-                entity.handle_collisions(self) # Call collision handlers if needed
+            if entity.is_alive:
+                entity.handle_collisions(self)
 
-
-        # Process deaths and callbacks *after* iteration
+        dead_entities = [e for e in self.entities if not e.is_alive]
         for entity in dead_entities:
             if entity.death_cb:
                 entity.death_cb(entity, self, *entity.death_cb_args)
