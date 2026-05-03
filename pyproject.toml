@@ -28,4 +28,12 @@ dependencies = [
 asciiquarium = "asciiquarium:cli_entry"
 
 [tool.setuptools]
-py-modules = ["asciiquarium", "assets"]
+py-modules = [
+    "asciiquarium",
+    "animation",
+    "assets",
+    "cli",
+    "constants",
+    "creatures",
+    "entity",
+]
