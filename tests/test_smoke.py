@@ -52,6 +52,7 @@ def _patch_curses():
         patch.object(curses, 'init_pair', lambda *a, **k: None),
         patch.object(curses, 'color_pair', lambda n: n),
         patch.object(curses, 'has_colors', lambda: True),
+        patch.object(curses, 'resizeterm', lambda *a, **k: None),
         patch.object(curses, 'COLORS', 256, create=True),
         patch.object(curses, 'COLOR_PAIRS', 256, create=True),
     ]
@@ -123,6 +124,39 @@ class SmokeTest(unittest.TestCase):
         stdscr = FakeStdscr(h=30, w=120)
         anim = asciiquarium.Animation(stdscr, fps=20.0, use_color=False)
         anim._populate()
+        for _ in range(20):
+            anim.animate()
+            anim.draw_screen()
+
+    def test_resize_rebuilds_geometry_keeps_fish(self):
+        """ Resize should drop waterlines/castle/seaweed and rebuild
+        them, but keep fish/sharks/etc. in place. """
+        import asciiquarium
+        stdscr = FakeStdscr(h=30, w=120)
+        anim = asciiquarium.Animation(stdscr, fps=20.0)
+        anim._populate()
+        # Pin a couple of free-floating entities so we can verify
+        # they survive the resize.
+        kept_ids = {id(e) for e in anim.entities
+                    if e.type not in {'waterline', 'seaweed'} and e.name != 'castle'}
+        self.assertGreater(len(kept_ids), 0)
+
+        # Simulate the terminal growing.
+        stdscr.h, stdscr.w = 50, 200
+        anim.update_term_size()
+        anim._rebuild_geometry()
+
+        # Geometry layer regenerated.
+        self.assertTrue(any(e.type == 'waterline' for e in anim.entities))
+        self.assertTrue(any(e.name == 'castle' for e in anim.entities))
+        self.assertTrue(any(e.type == 'seaweed' for e in anim.entities))
+        # The previously-pinned free-floating entities are still alive
+        # (or were at least mostly preserved — culling happens for any
+        # entity now offscreen, but those at the original positions on
+        # a *larger* screen can't be offscreen).
+        survived = {id(e) for e in anim.entities} & kept_ids
+        self.assertGreater(len(survived), 0)
+
         for _ in range(20):
             anim.animate()
             anim.draw_screen()

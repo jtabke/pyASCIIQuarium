@@ -583,6 +583,12 @@ class Animation:
     MIN_WIDTH = 40
     MIN_HEIGHT = 15
 
+    # Entity types that are anchored to screen geometry — they need to be
+    # rebuilt on resize. Everything else (fish, shark, whale, monster,
+    # big_fish, bubble, teeth, splat) is free-floating and can stay.
+    _GEOMETRY_TYPES = {'waterline', 'seaweed'}
+    _GEOMETRY_NAMES = {'castle'}
+
     def _populate(self):
         """ Create the static + initial random-object population. """
         create_environment(self)
@@ -591,6 +597,32 @@ class Animation:
         create_all_fish(self)
         RANDOM_OBJECT_POOL[random.randrange(len(RANDOM_OBJECT_POOL))](None, self)
         self.paused = False
+        self.needs_redraw = True
+
+    def _rebuild_geometry(self):
+        """ Resize-friendly partial reset.
+
+        Drop only the entities that depend on terminal dimensions
+        (water lines, castle, seaweed) and rebuild them at the new size.
+        Cull any free-floating entity that's now wholly off-screen so it
+        doesn't sit in limbo with die_offscreen=True still pending.
+        """
+        kept = []
+        for e in self.entities:
+            if e.type in self._GEOMETRY_TYPES or e.name in self._GEOMETRY_NAMES:
+                continue  # discard
+            if e.is_offscreen(self.width, self.height):
+                continue  # was on the old screen, no longer on this one
+            kept.append(e)
+        self.entities = kept
+        create_environment(self)
+        create_castle(self)
+        create_all_seaweed(self)
+        # Top up fish if the new (larger) terminal warrants more.
+        target = max(1, ((self.height - 9) * self.width) // 350)
+        current = sum(1 for e in self.entities if e.type == 'fish')
+        for _ in range(max(0, target - current)):
+            create_fish(None, self)
         self.needs_redraw = True
 
     def _too_small(self):
@@ -651,9 +683,16 @@ class Animation:
                         self._populate()
                 elif key == curses.KEY_RESIZE:
                      if self.update_term_size():
-                          self.remove_all_entities()
-                          if not self._too_small():
+                          if self._too_small():
+                              # Below threshold — drop everything; the
+                              # next big-enough resize will repopulate.
+                              self.remove_all_entities()
+                          elif not self.entities:
                               self._populate()
+                          else:
+                              # Keep fish/sharks/whales in place; only
+                              # rebuild the geometry-dependent layers.
+                              self._rebuild_geometry()
 
             # --- Update and Draw ---
             if self._too_small():
