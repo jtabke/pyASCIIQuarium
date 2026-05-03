@@ -138,6 +138,20 @@ DEPTH = {
     'water_gap0': 9,
 }
 
+def shape_dimensions(shape_str):
+    """ (width, height) of a shape string without constructing an Entity.
+
+    Mirrors Entity._update_dimensions: outer newlines are stripped,
+    then split on '\\n'. Used by entity factories that need the size
+    before placement; allocating a throwaway Entity just to measure
+    would also kick off shape preprocessing for nothing.
+    """
+    if not shape_str:
+        return (0, 0)
+    lines = shape_str.strip('\n').split('\n')
+    return (max((len(line) for line in lines), default=0), len(lines))
+
+
 # --- Entity Class ---
 class Entity:
     def __init__(self, name="", type="", shape=None, color_map=None,
@@ -930,9 +944,7 @@ def create_fish_entity(anim, fish_data):
     color_map = rand_color_mask(mask_template, palette=anim.fish_palette)
 
     # Calculate initial position
-    temp_entity = Entity(shape=shape)  # Temp to get dimensions
-    fish_height = temp_entity.height()
-    fish_width = temp_entity.width()
+    fish_width, fish_height = shape_dimensions(shape)
 
     # Vertical position constraints
     min_y = 9  # Below waterline
@@ -1191,9 +1203,7 @@ def create_monster_entity(anim, monster_data, monster_mask_data):
     masks = [mask_base] * num_frames
 
     # Calculate dimensions from the first frame
-    temp_entity = Entity(shape=shapes[0])
-    mon_height = temp_entity.height()
-    mon_width = temp_entity.width()
+    mon_width, mon_height = shape_dimensions(shapes[0])
 
     speed = 2.0
     vx = speed if dir == 0 else -speed
