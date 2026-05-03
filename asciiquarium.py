@@ -987,7 +987,7 @@ def create_splat(anim, x, y, z, splat_char='*'):
         default_color_char='R', # Bright Red
         anim_speed=0.25, # How fast the splat animates
         transparent_char=' ',
-        die_frame=len(splat_shapes), # Die after playing all frames
+        die_frame=15, # Match Perl: die after ~15 anim ticks (cycles through frames a few times)
     )
     anim.add_entity(entity)
 
@@ -1120,24 +1120,24 @@ def create_whale(old_ent, anim):
     whale_anim_shapes = []
     whale_anim_masks = []
 
-    # Create frames combining whale and spout
+    # Match the Perl original: 5 silent frames (no spout) followed by
+    # the 7 spout-animation frames, so the whale swims a few seconds
+    # between exhalations.
+    silent_prefix = "\n\n\n" + base_whale_shape.strip('\n')
+    for _ in range(5):
+        whale_anim_shapes.append(silent_prefix)
+        whale_anim_masks.append(base_whale_mask)
+
+    # Then the actual water-spout cycle.
     for spout_frame in water_spout_frames:
-         # Prepend spout, aligning it horizontally
          aligned_spout_lines = []
          for line in spout_frame.split('\n'):
              aligned_spout_lines.append(" " * spout_align_x + line)
          aligned_spout = "\n".join(aligned_spout_lines)
-
-         # Combine spout and whale shape (ensure newline alignment)
-         # This simple concatenation might need refinement
          combined_shape = aligned_spout.rstrip('\n') + "\n" + base_whale_shape.strip('\n')
-
-         # Pad mask to match spout height? For now, just use base mask.
-         # A proper implementation would generate masks for the spout too.
          combined_mask = ("\n" * spout_frame.count('\n')) + base_whale_mask
-
          whale_anim_shapes.append(combined_shape)
-         whale_anim_masks.append(combined_mask) # Use base mask for all frames
+         whale_anim_masks.append(combined_mask)
 
 
     entity = Entity(
