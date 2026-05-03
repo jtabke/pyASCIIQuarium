@@ -41,6 +41,20 @@ import signal
 import sys
 import atexit
 
+from assets import (
+    WATER_LINE_SEGMENTS,
+    CASTLE_SHAPE, CASTLE_MASK,
+    SPLAT_SHAPES,
+    SHARK_SHAPES, SHARK_MASKS,
+    SHIP_SHAPES, SHIP_MASKS,
+    WHALE_SHAPES, WHALE_MASKS, WATER_SPOUT_FRAMES,
+    NEW_MONSTER_FRAMES, NEW_MONSTER_MASKS,
+    OLD_MONSTER_FRAMES, OLD_MONSTER_MASKS,
+    BIG_FISH_1_SHAPES, BIG_FISH_1_MASKS,
+    BIG_FISH_2_SHAPES, BIG_FISH_2_MASKS,
+    NEW_FISH_DATA, OLD_FISH_DATA,
+)
+
 VERSION = "1.1 (Python)"
 NEW_FISH = True
 NEW_MONSTER = True
@@ -661,14 +675,7 @@ class Animation:
 
 # --- Environment Creation ---
 def create_environment(anim):
-    # Verbatim Perl water-line segments; spacing matters — earlier port
-    # was off by one column in segments 1–3, distorting the wave pattern.
-    water_line_segment_shapes = [
-        "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
-        "^^^^ ^^^  ^^^   ^^^    ^^^^      ",
-        "^^^^      ^^^^     ^^^    ^^     ",
-        "^^      ^^^^      ^^^    ^^^^^^  "
-    ]
+    water_line_segment_shapes = WATER_LINE_SEGMENTS
     segment_size = len(water_line_segment_shapes[0])
     # Use integer division //
     segment_repeat = anim.width // segment_size + 2 # Ensure full coverage
@@ -687,38 +694,8 @@ def create_environment(anim):
         anim.add_entity(entity)
 
 def create_castle(anim):
-    castle_image = r"""
-                T~~
-                |
-               /^\
-              /  \
- _   _   _  /    \  _   _   _
-[ ]_[ ]_[ ]/ _  _ \[ ]_[ ]_[ ]
-|_=__-_ =_|_[ ]_[ ]_|_=-___-__|
- | _- =  | =_ = _    |= _=   |
- |= -[]  |- = _ =    |_-=_[] |
- | =_    |= - ___    | =_ =  |
- |=  []- |-  /| |\   |=_ =[] |
- |- =_   | =| | | |  |- = -  |
- |_______|__|_|_|_|__|_______|
-"""
-    # Simplified mask using direct color chars from COLOR_CHAR_MAP
-    castle_mask = r"""
-                RR
-                R
-               YYY
-              Y  Y
- Y   Y   Y  Y    Y  Y   Y   Y
-[W]_[W]_[W]Y W  W Y[W]_[W]_[W]
-|W=__-_=W|_|W|_[W]|_|W=-___-W|
- |W_-W= W|W=WW_=W W |W=W_= W |
- |W=-[W]W|W-=W_W=W W |W_-=_[W]|
- |W=_W W |W=-W___W W |W=_W= W |
- |W= W[]-|W- W/|W|\W W|=_W=[]W|
- |W-=W_W W|W=|W|W|W|W |W-=W-W |
- |WWWWWWW|WW|W|W|W|WW|WWWWWWW|
-""" # Note: Mask interpretation might need fine-tuning based on desired look
-
+    castle_image = CASTLE_SHAPE
+    castle_mask = CASTLE_MASK
     castle_height = castle_image.count('\n')
     castle_width = max(len(line) for line in castle_image.split('\n'))
 
@@ -837,311 +814,10 @@ def create_fish(old_fish, anim):
 
 # (Keep add_new_fish_data, add_old_fish_data, add_fish_entity functions separate for clarity)
 def get_new_fish_data():
-    # Each element is (shape_left, mask_left, shape_right, mask_right)
-    # Masks use number chars 1-7, 4=White(W)
-    # 1: body, 2: dorsal, 3: flippers, 4: eye(W), 5: mouth, 6: tail, 7: gills
-    data = [
-        (r"""
-  \\
- / \\
->=_('>
- \_/
-  /
-""", r"""
-  2
- 1 1
-663745
- 111
-  3
-""", r"""
-  /
- / \\
-<')_=<
- \_/
-  \\
-""", r"""
-  3
- 111
-547366
- 1 1
-  2
-"""),
-        (r"""
-    ,
-    \}\
-\\ .'  `\\
-\}\}<  ( 6>
-/  `, .'
-    \}/
-    '
-""", r"""
-    2
-    22
-6  11  11
-661  7 45
-6  11  11
-    33
-    3
-""", r"""
-   ,
-  /\{
- /'  `.  /
-<6 )  >\{\{
- `.  ,'  \\
-   \\\{
-    `
-""", r"""
-   3
-  33
-6  11  11
-54 7  166
-6  11  11
-  22
-   2
-"""),
-        (r"""
-         \\'`.
-          )  \\
-(`.??????_.-`' ' '`-.
- \\ `.??.`      (o) \\_
-  >  ><    (((      (
- / .`??`._    /_|  /'
-(.`???????`-. _  _.-`
-             /__/'
-
-""", r"""
-         1111
-          1  1
-111      11111 1 1111
- 1 11  11       141 11
-  1  11    777      5
- 1 11  111     333  11
-111       111 1  1111
-             11111
-
-""", r"""
-      .'`/
-     /  (
- .-'` ` `'-._??????.')
-_/ (o)      '.??.' /
-)      )))    ><  <
-`\\  |_\\     _.'??'. \\
-  '-._  _ .-'???????'.)
-     `\\__\\
-""", r"""
-      1111
-     1  1
-  1111 1 11111      111
-11 141       11  11 1
-5      777     11  1
-11  333     111  11 1
-  1111  1 111       111
-     11111
-"""),
-        (r"""
-      ,--,_
-__   _\\.---'-.
-\\ '.-"    // o\\
-/_.'-._   \\\\  /
-      `"--(/"`
-""", r"""
-      22222
-66   121111211
-6 6111    77 41
-6661111   77  1
-      11113311
-""", r"""
-   _,--,
- .-'---./_   __
-/o \\    "-.' /
-\\ //   _.-'._\\
- `"\\)--"`
-""", r"""
-   22222
- 112111121   66
-14 77    1116 6
-1  77   1111666
- 11331111
-"""),
-    ]
-    return data
+    return NEW_FISH_DATA
 
 def get_old_fish_data():
-    data = [
-        (r"""
-      \
-    ...\..,
-\  /'      \
- >=    (  ' >
-/  \     / /
-   `"'"'/''
-""", r"""
-      2
-    1112111
-6  11      1
- 66    7  4 5
-6  1     3 1
-   11111311
-""", r"""
-     /
- ,../...
-/      '\  /
-< '  )    =<
- \ \     /  \
-  `'\'"'"'
-""", r"""
-     2
- 1112111
-1      11  6
-5 4  7    66
- 1 3     1  6
-  11311111
-"""),
-        (r"""
-  \
-\ /--\
->=  (o>
-/ \__/
-   /
-""",r"""
-  2
-6 1111
-66  745
-6 1111
-   3
-""", r"""
- /
-/--\ /
-<o)  =<
- \__/ \
-  \
-""", r"""
-  2
- 1111 6
-547  66
- 1111 6
-  3
-"""),
-        (r"""
-      \:.
-\;,  ,;\\\\\,,
-  \\\\\;;:::::::o
-  ///;;::::::::<
- /;` ``/////``
-""", r"""
-      222
-666  1122211
-  6661111111114
-  66611111111115
- 666 113333311
-""", r"""
-     .:/
-  ,,///;,  ,;/
- o:::::::;;///
->::::::::;;\\\\\
-  ''\\\\\\\\\'' ';\
-""", r"""
-     222
-  1122211  666
- 4111111111666
-51111111111666
-  113333311 666
-"""),
-        (r"""
- __
-><_'>
-   '
-""", r"""
- 11
-61145
-   3
-""", r"""
- __
-<'_><
- `
-""", r"""
- 11
-54116
- 3
-"""),
-        (r"""
-  ..\,
->='  (' >
-  '''/''
-""", r"""
-  1121
-661  745
-  111311
-""", r"""
- ,/..
-<')  `=<
- ``\```
-""", r"""
- 1211
-547  166
- 113111
-"""),
-        (r"""
-  \
- / \
->=_('>
- \_/
-  /
-""", r"""
-  2
- 1 1
-661745
- 111
-  3
-""", r"""
- /
-/ \
-<')_=<
- \_/
-  \
-""", r"""
-  2
- 1 1
-547166
- 111
-  3
-"""),
-        (r"""
- ,\
->=('>
- '/
-""", r"""
- 12
-66745
- 13
-""", r"""
- /
-<')=<
- \`
-""", r"""
- 21
-54766
- 31
-"""),
-        (r"""
- __
-\/ o\
-/\__/
-""", r"""
- 11
-61 41
-61111
-""", r"""
- __
-/o \/
-\__/\
-""", r"""
- 11
-14 16
-11116
-"""),
-    ]
-    return data
+    return OLD_FISH_DATA
 
 def rand_color_mask(color_mask_template, palette=None):
     """ Replaces digits 1-9 in a mask template with random color chars.
@@ -1242,34 +918,10 @@ def fish_collision(fish, anim):
 
 # --- Splat Effect ---
 def create_splat(anim, x, y, z, splat_char='*'):
-    splat_shapes = [
-        # Frames shrink over time
-        f"""
-
-   {splat_char}
-  {splat_char}{splat_char}{splat_char}
-   '
-
-""", f"""
-
-  "{splat_char};`
- "{splat_char},{splat_char}{splat_char}
- {splat_char}"'~'
-
-""", f"""
-  , ,
- " ","'
- {splat_char}" {splat_char}'"
-  " ; .
-
-""", f"""
-{splat_char} ' , ' `
-' ` {splat_char} . '
- ' `' ",{splat_char}
-{splat_char} ' " {splat_char} .
-" {splat_char} ', '
-""", " " # Disappear
-    ]
+    if splat_char == '*':
+        splat_shapes = SPLAT_SHAPES
+    else:
+        splat_shapes = [s.replace('*', splat_char) for s in SPLAT_SHAPES]
 
     splat_x = x - 4 # Center the splat approx where the fish was
     splat_y = y - 2
@@ -1287,56 +939,8 @@ def create_splat(anim, x, y, z, splat_char='*'):
 
 # --- Shark ---
 def create_shark(old_ent, anim):
-    shark_image = [
-        r"""
-                             __
-                           ( `\
- ,??????????????????????????)   `\
-;' `.????????????????????????(     `\__
- ;   `.?????????????__..---''         `~~~~-._
-  `.   `.____...--''                         (b `--._
-    >                                _.-'     .((     ._    )
-  .`.-`--...__             .-'    -.___.....-(|/|/|/|/'
- ;.'?????????`. ...----`.___.',,,_______......---'
- '???????????'-'
-""", r"""
-                          __
-                         /' )
-                       /'   (??????????????????????????,
-                 __/'     )????????????????????????.' `;
-       _.-~~~~'          ``---..__?????????????.'   ;
-   _.--'  b)                   ``--...____.'   .'
- (     _.     )).      `-._                    <
-  `\|\|\|\|)-.....___.-    `-.         __...--'-.'.
-   `---......_______,,,`.___.'----... .'?????????`.;
-                                     `-`???????????`
-"""
-    ]
-    # Mask: c=Cyan fin R=Red mouth W=White teeth
-    shark_mask = [
-        r"""
-
-
-
-
-
-                             cR
-                             cWWWWWWWW
-
-
-""", r"""
-
-
-
-
-
-       Rc
-
-  WWWWWWWWc
-
-
-"""
-    ]
+    shark_image = SHARK_SHAPES
+    shark_mask = SHARK_MASKS
 
     dir = random.randrange(2) # 0 = left, 1 = right
     shark_shape = shark_image[dir]
@@ -1404,41 +1008,8 @@ def shark_death(shark, anim, teeth_entity):
 
 # --- Ship ---
 def create_ship(old_ent, anim):
-    ship_image = [
-        r"""
-    |   |   |
-   )_) )_) )_)
-  )___))___))___)\
- )____)____)_____)\\\
-_____|____|____|____\\\\\__
-\                   /
-""", r"""
-       |   |   |
-      (_( (_( (_(
-     /(___((___((___(
-   //(_____(____(____(
-__///____|____|____|_____
-   \                   /
-"""
-    ]
-    # y=yellow, w=white/wave
-    ship_mask = [
-        r"""
-    y   y   y
-   y_y y_y y_y
-  y___yy___yy___y\w
- y____yy____yy____y\ww
-YYYYYyYYYYyYYYYyYYYYwwwwwYY
-Y                   Y
-""", r"""
-       y   |   |
-      y_y y_y y_y
-     wy(___yy___yy___y
-   wwy(____y(____y____y
-ww///YYYYyYYYYyYYYYyYYYYY
-   Y                   Y
-"""
-    ] # Adjust 'w' placement/color for desired wave look
+    ship_image = SHIP_SHAPES
+    ship_mask = SHIP_MASKS
 
     dir = random.randrange(2) # 0 = left, 1 = right
     shape = ship_image[dir]
@@ -1469,48 +1040,9 @@ ww///YYYYyYYYYyYYYYyYYYYY
 
 # --- Whale ---
 def create_whale(old_ent, anim):
-    whale_image = [
-        r"""
-      .-----:
-     .'      `.
-,????/      (o) \
-\`._/         ,__)
-""", r"""
-   :-----.
- .'      `.
- / (o)      \????,
-(__,         \_.'/
-"""
-    ]
-    # C=Cyan spout, B=Blue body, W=White eye
-    whale_mask = [
-        r"""
-      CCCCCC
-     C      C
-BBBBBC    CWB C
-BBD_B         BBBB
-""", r"""
-   CCCCCC
- C      C
- C BWC    CBbbbb
-BBBB         BD_BB
-""" # Adjusted slightly, 'D' could be dark blue if available/mapped
-    ]
-    water_spout_frames = [
-        "\n\n\n", # Initial delay - no spout
-        "\n\n\n",
-        "\n\n\n",
-        "\n\n\n",
-        "\n\n\n",
-        "\n\n : \n",
-        "\n : \n : \n",
-        "\n . .\n -:-\n  : \n",
-        "\n . .\n.-:-.\n  : \n",
-        "\n . .\n'.-:-.`\n' : '\n",
-        "\n\n .- -.\n; : ;\n",
-        "\n\n\n;   ;\n",
-        "\n\n\n\n" # Spout disappears
-    ]
+    whale_image = WHALE_SHAPES
+    whale_mask = WHALE_MASKS
+    water_spout_frames = WATER_SPOUT_FRAMES
 
     dir = random.randrange(2) # 0 = left, 1 = right
     base_whale_shape = whale_image[dir]
@@ -1575,136 +1107,10 @@ def create_monster(old_ent, anim):
          create_old_monster_entity(anim)
 
 def get_new_monster_data():
-    # [ [frame1_left, frame2_left], [frame1_right, frame2_right] ]
-    monster_image_pairs = [
-        [
-            r"""
-        _???_?????????????????????_???_???????_a_a
-       _{.`=`.}_??????_???_??????_{.`=`.}_????{/ ''\\_
- _????{.'  _  '.}????{.`'`.}????{.'  _  '.}??{|  ._oo)
-{ \\??{/  .'?'.  \\}??{/ .-. \\}??{/  .'?'.  \\}?{/  |
-""",
-            r"""
-                 _???_????????????????????_a_a
- _??????_???_??????_{.`=`.}_??????_???_??????{/ ''\\_
-{ \\????{.`'`.}????{.'  _  '.}????{.`'`.}????{|  ._oo)
- \\ \\??{/ .-. \\}??{/  .'?'.  \\}??{/ .-. \\}???{/  |
-"""
-        ],
-        [
-            r"""
-  a_a_???????_???_?????????????????????_???_
- _/'' \\}????_{.`=`.}_??????_???_??????_{.`=`.}_
-(oo_.  |}??{.'  _  '.}????{.`'`.}????{.'  _  '.}????_
-   |  \\}?{/  .'?'.  \\}??{/ .-. \\}??{/  .'?'.  \\}??/ }
-""",
-            r"""
-  a_a_????????????????????_   _
- _/'' \\}??????_???_??????_{.`=`.}_??????_???_??????_
-(oo_.  |}????{.`'`.}????{.'  _  '.}????{.`'`.}????/ }
-   |  \\}???{/ .-. \\}??{/  .'?'.  \\}??{/ .-. \\}??/ /
-"""
-        ]
-    ]
-    # Mask: W = White eye
-    monster_mask = [
-        # Mask for left-moving (eyes on right)
-        r"""
-                                           W W
-
-
-
-""",    # Mask for right-moving (eyes on left)
-        r"""
-  W W
-
-
-
-"""
-    ]
-    return monster_image_pairs, monster_mask
+    return NEW_MONSTER_FRAMES, NEW_MONSTER_MASKS
 
 def get_old_monster_data():
-    # [ [frame1_left, frame2_left,...], [frame1_right, frame2_right,...] ]
-    monster_image_frames = [
-        [ # Left moving frames
-            r"""
-                                                     ____
-          __??????????????????????????????????????????/  o  \
-         /   \????????_?????????????????????_???????/    ____ >
- _??????|  __ |?????/   \????????_????????/   \????|    |
-| \?????|  || |????|     |?????/   \?????|     |???|    |
-""",
-            r"""
-                                                     ____
-                                       __?????????/  o  \
-           _?????????????????????_???????/   \?????/    ____ >
-  _???????/   \????????_????????/   \????|  __ |???|    |
- | \?????|     |?????/   \?????|     |???|  || |???|    |
-""",
-            r"""
-                                                     ____
-                                __????????????????????/  o  \
- _??????????????????????_???????/   \????????_???????/    ____ >
-| \??????????_????????/   \????|  __ |?????/   \????|    |
- \ \???????/   \?????|     |???|  || |????|     |???|    |
-""",
-            r"""
-                                                     ____
-               __???????????????????????????????/  o  \
- _??????????_???????/   \????????_??????????????????/    ____ >
- | \???????/   \????|  __ |?????/   \????????_??????|    |
-  \ \?????|     |???|  || |????|     |?????/   \????|    |
-"""
-        ],
-        [ # Right moving frames
-            r"""
-   ____
- /  o  \??????????????????????????????????????????__
-< ____    \???????_?????????????????????_????????/   \
-     |     |????/   \????????_????????/   \?????|  __ |??????_
-     |     |???|     |?????/   \?????|     |????|  || |?????/ |
-""",
-            r"""
-   ____
- /  o  \?????????__
-< ____    \?????/   \???????_?????????????????????_
-     |     |???|  __ |????/   \????????_????????/   \???????_
-     |     |???|  || |???|     |?????/   \?????|     |?????/ |
-""",
-            r"""
-   ____
- /  o  \????????????????????__
-< ____    \???????_????????/   \???????_??????????????????????_
-     |     |????/   \?????|  __ |????/   \????????_??????????/ |
-     |     |???|     |????|  || |???|     |?????/   \???????/ /
-""",
-            r"""
-   ____
- /  o  \???????????????????????????????__
-< ____    \??????????????????_????????/   \???????_??????????_
-     |     |??????_????????/   \?????|  __ |????/   \???????/ |
-     |     |????/   \?????|     |????|  || |???|     |?????/ /
-"""
-        ]
-    ]
-    # Mask: W = White eye
-    monster_mask = [
-        # Mask for left-moving (eye on right)
-        r"""
-                                                         W
-
-
-
-""",    # Mask for right-moving (eye on left)
-        r"""
-    W
-
-
-
-"""
-    ]
-    return monster_image_frames, monster_mask
+    return OLD_MONSTER_FRAMES, OLD_MONSTER_MASKS
 
 def create_monster_entity(anim, monster_data, monster_mask_data):
     """ Creates a sea monster entity. """
@@ -1764,73 +1170,8 @@ def create_big_fish(old_ent, anim):
 
 
 def create_big_fish_1(old_ent, anim):
-    big_fish_image = [
-        r"""
- ______
-`""-.  `````-----.....__
-     `.  .     .       `-.
-       :    .     .       `.
- ,?????:   .     .         _ :
-: `.???:                (@) `._
- `. `..'     .     =`-.     .__)
-  ;     .        =  ~  :   .-"
-.' .'`.   .     . =.-'  `._ .'
-: .'???:             .   .'
- '???.'.   .     .    .-'
-  .'____....----''.'=.'
-  ""?????????????.'.'
-               ''"'`
-""", r"""
-               ______
-       __.....-----'''''  .-""'
-     .-'      .     .  .'
-    .'       .     .    :
-   : _           .    .  :?????,
- _.' (@)                 :???.' :
-(__.       .-'=     .    `..' .'
- "-.    :  ~  =        .    ;
-  `. _.'  `-.=  .     .   .'`. `.
-     `.   .             :???`. :
-      `-.   .     .    . `.???`
-        `.=`.``----....____`.
-         `.`.?????????????""
-            '`"``
-"""
-    ]
-    # Mask: 1=Body, 2=Highlights/Dots, W=Eye
-    big_fish_mask = [
-        r"""
- 111111
-111111 1111111111111111
-     11  2     2       111
-       1    2     2       11
- 1111111   2     2         1 1
-1 111111                1W1 111
- 11 1111     2     1111     1111
-  1     2        1  1  1   111
- 11 1111   2     2 1111  111 11
-1 111111             2   11
- 1111111 2     2    2  111
-  111111111111111111111
-  11111111111111111111
-               11111
-""", r"""
-               111111
-       11111111111111111 111111
-     111      2     2  11
-    11       2     2    1
-   1 1         2    2  1111111
- 111 1W1                111111 1
-1111     1111     2     1111 11
- 111   1  1  1        2     1
- 11 111  1111  2     2   1111 11
-  11   2             111111 1
-   111  2     2    2 1111111
-    111111111111111111111
-     11111111111111111111
-            11111
-"""
-    ]
+    big_fish_image = BIG_FISH_1_SHAPES
+    big_fish_mask = BIG_FISH_1_MASKS
 
     dir = random.randrange(2) # 0 = left, 1 = right
     shape = big_fish_image[dir]
@@ -1873,69 +1214,8 @@ def create_big_fish_1(old_ent, anim):
 
 
 def create_big_fish_2(old_ent, anim):
-    big_fish_image = [
-        r"""
-              _ _ _
-           .='\\ \\ \\`"=,
-         .'\\ \\ \\ \\ \\ \\ \\
-\\'=._?????/ \\ \\ \\_\\_\\_\\_\\_\\
-\\'=._'.??/\\ \\,-"`- _ - _ - '-.
- \\`=._\\|'.\\/- _ - _ - _ - _- \\
- ;"= ._\\=./_ -_ -_ \{`"=_    @ \\
-  ;"=_-_=- _ -  _ - \{"=_"-    \\
-  ;_=_--_.,          \{_.='   .-/
- ;.="` / ';\\       _.    _.-`
- /_.='/ \\/ /;._ _ _\{.-;`/"`
-/._=_.'???'/ / / / /\{.= /
-/.=' ??????`'./_/_.=`\{_/
-""", r"""
-           _ _ _
-       ,="`/ / /'=.
-      / / / / / / /'.
-     /_/_/_/_/_/ / / \\?????_.='/
-   .-' - _ - _ -`"-,/ /\\??.'_.='/
-  / -_ - _ - _ - _ -\\/.'|/_.=`/
- / @    _="`\} _- _- _\\.=/_. =";
-/     -"_="\} - _  - _ -=_-_"=;
-\\-.   '=._\}           ,._--_=_;
- `-._     ._        /;' \\ `"=.;
-     `"\`;-.\}_ _ _.;\\ \\/ \\'=._\\
-       \\ =.\}\\ \\ \\ \\ \\'???'._=_.\\
-        \\_\}`=._\\_\\.'`???????'=.\\
-"""
-    ]
-    # Mask: 1=Body/Scales 2=Fin details W=Eye
-    big_fish_mask = [
-        r"""
-              1 1 1
-           11111 1 11111
-         1111 1 1 1 1 1 1
-11111111111 1 1 1 11111111111
-111111111111 1111112 2 2 2 2 111
- 1111111111111112 2 2 2 2 2 2 22 1
- 111 11111111112 22 22 11111    W 1
-  1111111111111112 2 2  2 2 111111    1
-  11111111111111111        11111   111
- 11111 111 111111       11     1111
- 1111111 11 111111 1 111111111
-1111111111 111 1 1 1 1111 1
-11111111111111111111111111
-""", r"""
-           1 1 1
-       11111 1 1 1111
-      1 1 1 1 1 1 111
-     1111111111111 1 1 11111111111
-   111 2 2 2 2 2111111 11 1111111111
-  1 22 2 2 2 2 2 2 21111111111111
- 1 W    11111 22 22 21111111 111
-1     111111 2 2  2 2 21111111
-111   11111           111111111
- 1111     11        11111 111111
-     111111111 1 11111111 1111111
-       11 1111 1 1 1 111111111111
-        111111111111111111111
-"""
-    ]
+    big_fish_image = BIG_FISH_2_SHAPES
+    big_fish_mask = BIG_FISH_2_MASKS
 
     dir = random.randrange(2) # 0 = left, 1 = right
     shape = big_fish_image[dir]
