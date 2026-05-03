@@ -171,6 +171,71 @@ class SmokeTest(unittest.TestCase):
         # row 2 was "  \\/" → "??\\/"
         self.assertEqual(e._lines[2], '??\\/')
 
+    def test_foreground_bbox_claim_blocks_back_fish_bleed(self):
+        """ Two overlapping fish: the closer one's bounding box must
+        prevent the further one from rendering anything inside that
+        rectangle, including through the closer fish's transparent
+        rows/cols. The castle behind both should still poke through
+        the closer fish's transparent cells (background pass writes
+        first). """
+        import random
+        random.seed(0)
+        import asciiquarium as aq
+
+        # Fake stdscr that captures every addch into a 2D grid.
+        class Cap:
+            def __init__(self, h=20, w=60):
+                self.h, self.w = h, w
+                self.grid = [[' '] * w for _ in range(h)]
+            def getmaxyx(self): return (self.h, self.w)
+            def getch(self): return -1
+            def erase(self):
+                self.grid = [[' '] * self.w for _ in range(self.h)]
+            def clear(self): self.erase()
+            def refresh(self): pass
+            def nodelay(self, _): pass
+            def keypad(self, _): pass
+            def addnstr(self, *a, **k): pass
+            def addstr(self, *a, **k): pass
+            def addch(self, y, x, ch, attr=0):
+                if 0 <= y < self.h and 0 <= x < self.w:
+                    self.grid[y][x] = ch
+
+        stdscr = Cap()
+        anim = aq.Animation(stdscr, fps=20.0)
+        aq.create_old_fish_entity(anim)
+        aq.create_old_fish_entity(anim)
+        fish_a, fish_b = [e for e in anim.entities if e.type == 'fish']
+        # Front fish (lower z = closer) at (5, 10).
+        fish_a.x, fish_a.y, fish_a.z = 5, 10, 5
+        # Back fish overlaps front horizontally.
+        fish_b.x, fish_b.y, fish_b.z = 7, 11, 12
+        anim.draw_screen()
+
+        # Inside front fish's bounding box, no character from the back
+        # fish should appear. Front bbox: cols [5, 5+w), rows [10, 10+h).
+        fa_x1 = int(fish_a.x)
+        fa_x2 = fa_x1 + fish_a.width()
+        fa_y1 = int(fish_a.y)
+        fa_y2 = fa_y1 + fish_a.height()
+        front_lines = fish_a._lines
+        for y in range(fa_y1, fa_y2):
+            row_idx = y - fa_y1
+            line = front_lines[row_idx] if row_idx < len(front_lines) else ''
+            for x in range(fa_x1, fa_x2):
+                col_idx = x - fa_x1
+                shape_char = line[col_idx] if col_idx < len(line) else ' '
+                drawn = stdscr.grid[y][x]
+                if shape_char in ('?', ' '):
+                    # Transparent cell of the front fish: must be empty
+                    # in this scene (no castle, nothing else drew here).
+                    self.assertEqual(drawn, ' ',
+                        f'cell ({y},{x}) should be empty but contains {drawn!r}')
+                else:
+                    # Opaque cell: must show the front fish's char.
+                    self.assertEqual(drawn, shape_char,
+                        f'cell ({y},{x}) expected {shape_char!r} got {drawn!r}')
+
     def test_silent_resize_in_run_loop(self):
         """ tmux panes resize without delivering KEY_RESIZE through
         getch(). The run loop must still pick up the new dimensions

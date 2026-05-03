@@ -192,52 +192,121 @@ class Animation:
             self.remove_entity(entity) # Remove from list
 
 
+    # Types treated as "background": their full bbox doesn't occlude
+    # other entities — only their non-transparent cells write to the
+    # screen, and they're drawn back-to-front under everything else.
+    _BACKGROUND_TYPES = {EntityType.WATERLINE, EntityType.SEAWEED}
+    _BACKGROUND_NAMES = {'castle'}
+
+    def _is_background(self, entity: Entity) -> bool:
+        return (entity.type in self._BACKGROUND_TYPES
+                or entity.name in self._BACKGROUND_NAMES)
+
     def draw_screen(self) -> None:
-        """ Draw all entities onto the screen, sorted back-to-front by z. """
+        """ Draw all entities, with bbox-claim occlusion for foreground.
+
+        Two passes:
+        1. Background (waterlines, castle, seaweed): plain back-to-front
+           painter's algorithm; transparency lets lower layers show
+           through. Same as the original engine.
+        2. Foreground (fish, shark, whale, monster, big_fish, bubble,
+           ship, teeth): front-to-back with a per-cell `claimed` set.
+           A closer foreground entity claims its WHOLE bounding box,
+           including its transparent cells, so a further-back
+           foreground entity can't bleed through anywhere within that
+           rectangle. The closer entity's transparent cells still let
+           the (already-drawn) background through, since the
+           background pass wrote those cells before this pass started.
+        """
         self.stdscr.erase()
-        sorted_entities = sorted(self.entities, key=lambda e: e.z, reverse=True)
 
-        for entity in sorted_entities:
-            if not entity.is_alive:
+        background = []
+        foreground = []
+        for e in self.entities:
+            if not e.is_alive:
                 continue
+            (background if self._is_background(e) else foreground).append(e)
 
-            lines, color_lines = entity.get_shape_and_colors()
-            start_x, start_y = int(entity.x), int(entity.y)
+        # Pass 1: background, back-to-front (highest z first).
+        for entity in sorted(background, key=lambda e: e.z, reverse=True):
+            self._draw_entity_no_claim(entity)
 
-            for i, line in enumerate(lines):
-                current_y = start_y + i
-                if 0 <= current_y < self.height:
-                    color_line = color_lines[i] if i < len(color_lines) else ""
-                    default_attr = self.get_color_attr(entity.default_color_char)
-
-                    for j, char in enumerate(line):
-                        current_x = start_x + j
-                        if 0 <= current_x < self.width:
-                             # Skip transparent characters. '?' matches the
-                             # original Perl Term::Animation convention where
-                             # '?' is the default transparency marker; many of
-                             # the imported ASCII assets (complex fish, sharks,
-                             # whales, monsters, big fish) use '?' to mark
-                             # cells outside the irregular silhouette.
-                             if char == '?' or char == entity.transparent_char or (entity.auto_trans and char == ' '):
-                                 continue
-
-                             # Determine color/attribute
-                             attr = default_attr
-                             if j < len(color_line):
-                                 color_char = color_line[j]
-                                 if color_char != ' ' and color_char != '?': # Use '?' or space for default
-                                     attr = self.get_color_attr(color_char)
-
-                             try:
-                                  self.stdscr.addch(current_y, current_x, char, attr)
-                             except curses.error:
-                                  # addch on the bottom-right corner of a
-                                  # window is documented to fail; ignore.
-                                  pass
+        # Pass 2: foreground, front-to-back, with bbox claim.
+        claimed: set[tuple[int, int]] = set()
+        for entity in sorted(foreground, key=lambda e: e.z):
+            self._draw_entity_with_claim(entity, claimed)
 
         self.stdscr.refresh()
         self.needs_redraw = False
+
+    def _draw_entity_no_claim(self, entity: Entity) -> None:
+        """ Painter's-algorithm draw: write each non-transparent cell. """
+        lines, color_lines = entity.get_shape_and_colors()
+        start_x, start_y = int(entity.x), int(entity.y)
+        default_attr = self.get_color_attr(entity.default_color_char)
+        tchar = entity.transparent_char
+
+        for i, line in enumerate(lines):
+            current_y = start_y + i
+            if not (0 <= current_y < self.height):
+                continue
+            color_line = color_lines[i] if i < len(color_lines) else ""
+            for j, char in enumerate(line):
+                current_x = start_x + j
+                if not (0 <= current_x < self.width):
+                    continue
+                if char == '?' or char == tchar:
+                    continue
+                attr = default_attr
+                if j < len(color_line):
+                    cc = color_line[j]
+                    if cc != ' ' and cc != '?':
+                        attr = self.get_color_attr(cc)
+                try:
+                    self.stdscr.addch(current_y, current_x, char, attr)
+                except curses.error:
+                    pass
+
+    def _draw_entity_with_claim(self, entity: Entity, claimed: set) -> None:
+        """ Foreground draw: every cell in the bbox is claimed (so back
+        foreground entities can't render there); only non-transparent
+        shape cells actually write a character. """
+        lines, _color_lines = entity.get_shape_and_colors()
+        # Use width()/height() so we iterate the full bounding box, not
+        # just the (possibly ragged) shape lines.
+        bbox_w = entity.width()
+        bbox_h = entity.height()
+        start_x, start_y = int(entity.x), int(entity.y)
+        default_attr = self.get_color_attr(entity.default_color_char)
+        tchar = entity.transparent_char
+        color_lines = entity.get_shape_and_colors()[1]
+
+        for i in range(bbox_h):
+            current_y = start_y + i
+            if not (0 <= current_y < self.height):
+                continue
+            line = lines[i] if i < len(lines) else ''
+            color_line = color_lines[i] if i < len(color_lines) else ''
+            for j in range(bbox_w):
+                current_x = start_x + j
+                if not (0 <= current_x < self.width):
+                    continue
+                cell = (current_y, current_x)
+                if cell in claimed:
+                    continue
+                claimed.add(cell)  # claim the whole bbox, transparent or not
+                char = line[j] if j < len(line) else ' '
+                if char == '?' or char == tchar:
+                    continue  # claimed but not drawn — bg shows through
+                attr = default_attr
+                if j < len(color_line):
+                    cc = color_line[j]
+                    if cc != ' ' and cc != '?':
+                        attr = self.get_color_attr(cc)
+                try:
+                    self.stdscr.addch(current_y, current_x, char, attr)
+                except curses.error:
+                    pass
 
 
     def _show_help(self):
