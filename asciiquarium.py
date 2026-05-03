@@ -286,14 +286,10 @@ class Entity:
         if not self.is_alive:
             return
 
-        # Use wall-clock for die_time (humans set it via time.time() + N
-        # in the seaweed callback) but monotonic for the animation
-        # interval check, which only cares about elapsed time.
-        now_wall = time.time()
-        now_mono = time.monotonic()
+        now = time.monotonic()
 
         # --- Life checks ---
-        if self.die_time and now_wall >= self.die_time:
+        if self.die_time and now >= self.die_time:
             self.kill()
             return
         if self.die_frame and self._frames_shown >= self.die_frame:
@@ -302,10 +298,10 @@ class Entity:
 
         # --- Animation Frame ---
         if len(self.shapes) > 1 and self.anim_speed > 0:
-            if now_mono - self.last_anim_time >= (self.anim_speed / self.anim_speed_modifier):
+            if now - self.last_anim_time >= (self.anim_speed / self.anim_speed_modifier):
                 self.current_frame = (self.current_frame + 1) % len(self.shapes)
                 self._update_dimensions()
-                self.last_anim_time = now_mono
+                self.last_anim_time = now
                 self._frames_shown += 1
 
         # --- Movement (cells per Perl tick × real seconds × ticks/sec) ---
@@ -801,7 +797,9 @@ def create_seaweed(old_seaweed, anim):
     anim_speed = random.uniform(0.25, 0.30) # Time between frames
 
     # Seaweed lives for 8 to 12 minutes (480 to 720 seconds)
-    die_time = time.time() + random.randint(480, 720)
+    # 8-12 minutes from now; monotonic so a wall-clock jump doesn't
+    # cull or extend living seaweed.
+    die_time = time.monotonic() + random.randint(480, 720)
 
     entity = Entity(
         name='seaweed_' + str(random.randint(100,999)),
