@@ -45,6 +45,12 @@ VERSION = "1.1 (Python)"
 NEW_FISH = True
 NEW_MONSTER = True
 
+# Velocity values across the codebase (fish vx ~0.25–2.25, shark/monster 2.0,
+# whale/ship 1.0, bubble vy=-1) are calibrated for the Perl original, which
+# called animate() at 10 Hz via halfdelay(1). Scale by elapsed real time so
+# Python's --fps choice doesn't change visible speeds.
+TICK_RATE = 10.0  # "Perl ticks" per real second
+
 # --- Color Definitions ---
 # Map color names/chars to curses color constants and pair indices
 COLOR_MAP = {
@@ -131,7 +137,7 @@ class Entity:
 
         self.current_frame = 0
         self.anim_speed = anim_speed # Time between frames
-        self.last_anim_time = time.time()
+        self.last_anim_time = time.monotonic()
 
         self.default_color_char = default_color_char.upper() if default_color_char.isupper() else default_color_char.lower()
         self.die_offscreen = die_offscreen
@@ -198,15 +204,24 @@ class Entity:
     def kill(self):
         self.is_alive = False
 
-    def update(self, animation_instance):
-        """ Update entity state (position, animation frame, life status). """
+    def update(self, animation_instance, dt):
+        """ Update entity state (position, animation frame, life status).
+
+        `dt` is the real seconds elapsed since the last animate() call;
+        velocities are interpreted in cells per Perl tick (1/TICK_RATE
+        seconds), so movement is frame-rate independent.
+        """
         if not self.is_alive:
             return
 
-        now = time.time()
+        # Use wall-clock for die_time (humans set it via time.time() + N
+        # in the seaweed callback) but monotonic for the animation
+        # interval check, which only cares about elapsed time.
+        now_wall = time.time()
+        now_mono = time.monotonic()
 
         # --- Life checks ---
-        if self.die_time and now >= self.die_time:
+        if self.die_time and now_wall >= self.die_time:
             self.kill()
             return
         if self.die_frame and self._frames_shown >= self.die_frame:
@@ -215,19 +230,16 @@ class Entity:
 
         # --- Animation Frame ---
         if len(self.shapes) > 1 and self.anim_speed > 0:
-            if now - self.last_anim_time >= (self.anim_speed / self.anim_speed_modifier):
+            if now_mono - self.last_anim_time >= (self.anim_speed / self.anim_speed_modifier):
                 self.current_frame = (self.current_frame + 1) % len(self.shapes)
                 self._update_dimensions()
-                self.last_anim_time = now
+                self.last_anim_time = now_mono
                 self._frames_shown += 1
 
-        # --- Movement ---
-        # Note: Term::Animation applies movement based on time elapsed.
-        # A simpler frame-based movement is used here for less dependency on precise timing.
-        # For smoother animation, use time delta: delta_time = now - self.last_update_time; self.x += self.vx * delta_time * CHARS_PER_SECOND etc.
-        self.x += self.vx
-        self.y += self.vy
-        # self.z += self.vz # Z movement not typically used in this script
+        # --- Movement (cells per Perl tick × real seconds × ticks/sec) ---
+        step = dt * TICK_RATE
+        self.x += self.vx * step
+        self.y += self.vy * step
 
         # --- Offscreen Check ---
         if self.die_offscreen and self.is_offscreen(animation_instance.width, animation_instance.height):
@@ -269,6 +281,7 @@ class Animation:
         self.use_color = use_color and curses.has_colors()
         self._init_colors()
         self._last_term_size = (self.height, self.width)
+        self._last_animate_time = time.monotonic()
 
     def _init_colors(self):
         """ Initialize curses color pairs (or fall back to monochrome). """
@@ -387,9 +400,16 @@ class Animation:
         if self.paused:
             return
 
+        now = time.monotonic()
+        dt = now - self._last_animate_time
+        # Clamp dt so a long pause/stall doesn't teleport every entity.
+        if dt > 0.5:
+            dt = self.frame_delay
+        self._last_animate_time = now
+
         # Update entities
         for entity in self.entities:
-            entity.update(self)
+            entity.update(self, dt)
 
         # Perform collision detection *after* all updates
         self.check_collisions()
