@@ -164,6 +164,19 @@ class Entity:
         if len(self.color_maps) < len(self.shapes):
              self.color_maps.extend([self.color_maps[-1]] * (len(self.shapes) - len(self.color_maps)))
 
+        # If auto_trans is on, preprocess each shape so only EXTERIOR
+        # spaces (leading + trailing on each line) are transparent.
+        # Interior spaces (between the first and last non-space char)
+        # remain as ' ' and render opaquely. This stops back-layer
+        # entities from showing characters through the silhouette of a
+        # front-layer entity that overlaps it — the visible bug when
+        # two fish swim past each other. The transformation is done
+        # once at construction; auto_trans is consumed here.
+        if auto_trans:
+            self.shapes = [self._mark_exterior_transparent(s) for s in self.shapes]
+            auto_trans = False
+        self.auto_trans = auto_trans
+
         self.current_frame = 0
         self.anim_speed = anim_speed # Time between frames
         self.last_anim_time = time.monotonic()
@@ -180,7 +193,8 @@ class Entity:
         self.coll_handler = coll_handler
         self.physical = physical # Can participate in collisions
         self.transparent_char = transparent_char
-        self.auto_trans = auto_trans # Treat spaces as transparent?
+        # self.auto_trans was already set above, after possible consumption
+        # via shape preprocessing.
 
         self.is_alive = True
         self._width = 0
@@ -191,6 +205,23 @@ class Entity:
 
         # For collision detection
         self.collisions = []
+
+    @staticmethod
+    def _mark_exterior_transparent(shape_str):
+        """ Replace each line's leading and trailing spaces with '?'
+        (the universal transparent char). Interior spaces keep being
+        rendered as opaque, so a fish silhouette occludes whatever is
+        behind it instead of letting characters bleed through. """
+        if not shape_str:
+            return shape_str
+        out = []
+        for line in shape_str.split('\n'):
+            stripped_left = line.lstrip(' ')
+            leading = len(line) - len(stripped_left)
+            stripped = stripped_left.rstrip(' ')
+            trailing = len(stripped_left) - len(stripped)
+            out.append('?' * leading + stripped + '?' * trailing)
+        return '\n'.join(out)
 
     def _update_dimensions(self):
         """ Recalculate dimensions based on the current frame's shape. """

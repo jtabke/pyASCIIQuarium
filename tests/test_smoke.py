@@ -128,6 +128,28 @@ class SmokeTest(unittest.TestCase):
             anim.animate()
             anim.draw_screen()
 
+    def test_exterior_transparency_preserves_interior(self):
+        """ When auto_trans=True, leading/trailing spaces on each line
+        should be marked transparent ('?') but interior spaces should
+        survive — that's how a fish silhouette occludes back-layer fish
+        instead of letting characters show through. """
+        import asciiquarium
+        e = asciiquarium.Entity(
+            type='fish',
+            shape="\n  /\\\n / \\\n  \\/\n",
+            auto_trans=True,
+        )
+        # auto_trans was consumed at construction time.
+        self.assertFalse(e.auto_trans)
+        # Leading spaces became '?'; the space between / and \ on row 1
+        # is interior and stays a space.
+        # row 0 was "  /\\" → "??/\\"
+        self.assertEqual(e._lines[0], '??/\\')
+        # row 1 was " / \\" → "?/ \\"  (interior single space preserved)
+        self.assertEqual(e._lines[1], '?/ \\')
+        # row 2 was "  \\/" → "??\\/"
+        self.assertEqual(e._lines[2], '??\\/')
+
     def test_silent_resize_in_run_loop(self):
         """ tmux panes resize without delivering KEY_RESIZE through
         getch(). The run loop must still pick up the new dimensions
