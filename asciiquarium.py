@@ -515,6 +515,35 @@ class Animation:
         self.paused = was_paused
         self.needs_redraw = True
 
+    MIN_WIDTH = 40
+    MIN_HEIGHT = 15
+
+    def _populate(self):
+        """ Create the static + initial random-object population. """
+        create_environment(self)
+        create_castle(self)
+        create_all_seaweed(self)
+        create_all_fish(self)
+        RANDOM_OBJECT_POOL[random.randrange(len(RANDOM_OBJECT_POOL))](None, self)
+        self.paused = False
+        self.needs_redraw = True
+
+    def _too_small(self):
+        return self.height < self.MIN_HEIGHT or self.width < self.MIN_WIDTH
+
+    def _show_too_small(self):
+        self.stdscr.erase()
+        msg = (f"terminal {self.width}x{self.height} is too small "
+               f"(need >= {self.MIN_WIDTH}x{self.MIN_HEIGHT})")
+        try:
+            self.stdscr.addnstr(0, 0, msg[:max(0, self.width - 1)],
+                                max(0, self.width - 1))
+            self.stdscr.addnstr(1, 0, "press q to quit, resize to continue",
+                                max(0, self.width - 1))
+        except curses.error:
+            pass
+        self.stdscr.refresh()
+
     def run(self):
         """ Main animation loop. """
         global NEW_FISH, NEW_MONSTER # Allow modification based on classic mode
@@ -524,16 +553,10 @@ class Animation:
             NEW_FISH = False
             NEW_MONSTER = False
 
-        # Initial setup
-        create_environment(self)
-        create_castle(self)
-        create_all_seaweed(self)
-        create_all_fish(self)
-        # Add one initial random "special" object
-        RANDOM_OBJECT_POOL[random.randrange(len(RANDOM_OBJECT_POOL))](None, self)
+        if not self._too_small():
+            self._populate()
 
         self.stdscr.nodelay(True) # Make getch non-blocking
-        # curses.halfdelay(1) # Or use halfdelay for 0.1s timeout
 
         last_time = time.monotonic()
         frame_delay = self.frame_delay # Configured via --fps (default 20)
@@ -558,38 +581,23 @@ class Animation:
                 elif key_char in ('h', '?'):
                     self._show_help()
                 elif key_char == 'r':
-                    # Redraw/Restart Logic
                     self.remove_all_entities()
-                    create_environment(self)
-                    create_castle(self)
-                    create_all_seaweed(self)
-                    create_all_fish(self)
-                    RANDOM_OBJECT_POOL[random.randrange(len(RANDOM_OBJECT_POOL))](None, self)
-                    self.paused = False
-                    self.needs_redraw = True
-                # Handle resize implicitly via SIGWINCH or check here
+                    if not self._too_small():
+                        self._populate()
                 elif key == curses.KEY_RESIZE:
                      if self.update_term_size():
-                          # Term size changed, force redraw of static elements?
-                          # Current loop structure handles this by default on 'r'
-                          # For dynamic resize without 'r', need to recreate/resize elements
-                          self.remove_all_entities() # Simple approach: restart like 'r'
-                          create_environment(self)
-                          create_castle(self)
-                          create_all_seaweed(self)
-                          create_all_fish(self)
-                          RANDOM_OBJECT_POOL[random.randrange(len(RANDOM_OBJECT_POOL))](None, self)
-                          self.paused = False
-
+                          self.remove_all_entities()
+                          if not self._too_small():
+                              self._populate()
 
             # --- Update and Draw ---
-            if not self.paused:
-                 self.animate()
-
-            # Only draw if needed or not paused (to see paused state)
-            # Or always draw if self.needs_redraw is True
-            if not self.paused or self.needs_redraw:
-                 self.draw_screen()
+            if self._too_small():
+                self._show_too_small()
+            else:
+                if not self.paused:
+                     self.animate()
+                if not self.paused or self.needs_redraw:
+                     self.draw_screen()
 
             # --- Frame Limiting --- (monotonic clock so wall-clock jumps
             # don't trigger huge sleep_time values or freeze the loop).
