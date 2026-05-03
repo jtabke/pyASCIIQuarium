@@ -12,7 +12,7 @@ import random
 import time
 
 from constants import (
-    BASE_FISH_PALETTE, COLOR_CHAR_MAP, EXTENDED_COLOR_MAP, VERSION,
+    BASE_FISH_PALETTE, COLOR_CHAR_MAP, EXTENDED_COLOR_MAP, EntityType, VERSION,
 )
 from creatures import (
     RANDOM_OBJECT_POOL,
@@ -294,7 +294,7 @@ class Animation:
     # Entity types that are anchored to screen geometry — they need to be
     # rebuilt on resize. Everything else (fish, shark, whale, monster,
     # big_fish, bubble, teeth, splat) is free-floating and can stay.
-    _GEOMETRY_TYPES = {'waterline', 'seaweed'}
+    _GEOMETRY_TYPES = {EntityType.WATERLINE, EntityType.SEAWEED}
     _GEOMETRY_NAMES = {'castle'}
 
     def _populate(self) -> None:
@@ -328,7 +328,7 @@ class Animation:
         create_all_seaweed(self)
         # Top up fish if the new (larger) terminal warrants more.
         target = max(1, ((self.height - 9) * self.width) // 350)
-        current = sum(1 for e in self.entities if e.type == 'fish')
+        current = sum(1 for e in self.entities if e.type == EntityType.FISH)
         for _ in range(max(0, target - current)):
             create_fish(None, self)
         self.needs_redraw = True

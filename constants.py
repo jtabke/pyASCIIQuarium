@@ -1,4 +1,5 @@
-"""Color tables, z-depth labels, version, and tick-rate calibration.
+"""Color tables, z-depth labels, version, tick-rate calibration, and
+the EntityType enum used to tag every drawable.
 
 Pure data — no curses calls happen here at import (the values are
 references to curses constants, which exist as soon as the curses
@@ -6,8 +7,26 @@ module is imported).
 """
 
 import curses
+from enum import Enum
 
 VERSION = "1.1 (Python)"
+
+
+class EntityType(str, Enum):
+    """ String-mixin enum: members behave as strings (so existing
+    equality checks like `e.type == 'fish'` keep working) but you get
+    autocomplete and a single source of truth for the names. """
+
+    FISH = "fish"
+    SHARK = "shark"
+    TEETH = "teeth"
+    SHIP = "ship"
+    WHALE = "whale"
+    MONSTER = "monster"
+    BIG_FISH = "big_fish"
+    BUBBLE = "bubble"
+    WATERLINE = "waterline"
+    SEAWEED = "seaweed"
 
 # Velocity values across the codebase (fish vx ~0.25-2.25, shark/monster
 # 2.0, whale/ship 1.0, bubble vy=-1) are calibrated for the Perl

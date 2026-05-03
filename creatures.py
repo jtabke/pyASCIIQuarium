@@ -25,7 +25,7 @@ from assets import (
     BIG_FISH_2_SHAPES, BIG_FISH_2_MASKS,
     NEW_FISH_DATA, OLD_FISH_DATA,
 )
-from constants import BASE_FISH_PALETTE, DEPTH
+from constants import BASE_FISH_PALETTE, DEPTH, EntityType
 from entity import Entity, shape_dimensions
 
 
@@ -40,7 +40,7 @@ def create_environment(anim: "Animation") -> None:
         depth_key = f'water_line{i}'
         entity = Entity(
             name=f"water_seg_{i}",
-            type="waterline",
+            type=EntityType.WATERLINE,
             shape=full_seg,
             pos=(0, i + 5, DEPTH[depth_key]), # Y position increases downwards
             default_color_char='c', # Cyan
@@ -99,7 +99,7 @@ def create_seaweed(old_seaweed: Entity | None, anim: "Animation") -> None:
 
     entity = Entity(
         name='seaweed_' + str(random.randint(100,999)),
-        type='seaweed',
+        type=EntityType.SEAWEED,
         shape=seaweed_frames, # Animated shape
         pos=(x, y, DEPTH['seaweed']),
         anim_speed=anim_speed,
@@ -125,7 +125,7 @@ def create_bubble(fish: Entity, anim: "Animation") -> None:
 
     entity = Entity(
         shape=bubble_shapes,
-        type='bubble',
+        type=EntityType.BUBBLE,
         pos=(bubble_pos_x, bubble_pos_y, bubble_pos_z),
         velocity=(0, -1, 0),
         anim_speed=0.1,
@@ -139,7 +139,7 @@ def create_bubble(fish: Entity, anim: "Animation") -> None:
 
 def bubble_collision(bubble: Entity, anim: "Animation") -> None:
     for col_obj in bubble.collisions:
-        if col_obj.type == 'waterline':
+        if col_obj.type == EntityType.WATERLINE:
             bubble.kill()
             break
 
@@ -228,7 +228,7 @@ def create_fish_entity(anim: "Animation", fish_data: list) -> None:
     x = -fish_width if moving_right else anim.width - 1
 
     entity = Entity(
-        type='fish',
+        type=EntityType.FISH,
         shape=shape,
         auto_trans=True,
         color_map=color_map,
@@ -260,7 +260,7 @@ def fish_collision(fish: Entity, anim: "Animation") -> None:
     """ Fish collision handler. """
     for col_obj in fish.collisions:
          # Only check collision with 'teeth' type (from shark)
-        if col_obj.type == 'teeth':
+        if col_obj.type == EntityType.TEETH:
             # Smaller fish get eaten
             if fish.height() <= 5:
                  create_splat(anim, *fish.position()) # Create blood splat
@@ -327,7 +327,7 @@ def create_shark(old_ent: Entity | None, anim: "Animation") -> None:
     # first move, so the shark would never bite anything. Death is
     # driven by the shark's death callback instead.
     teeth = Entity(
-        type='teeth',
+        type=EntityType.TEETH,
         shape="*",
         pos=(teeth_x, teeth_y, DEPTH['shark'] + 1),
         velocity=(vx, vy, 0),
@@ -337,7 +337,7 @@ def create_shark(old_ent: Entity | None, anim: "Animation") -> None:
 
     # Create shark entity
     shark = Entity(
-        type="shark",
+        type=EntityType.SHARK,
         shape=shark_shape,
         color_map=shark_mask_str,
         auto_trans=True,
@@ -379,7 +379,7 @@ def create_ship(old_ent: Entity | None, anim: "Animation") -> None:
     x = -ship_width if dir == 0 else anim.width
 
     entity = Entity(
-        type="ship",
+        type=EntityType.SHIP,
         shape=shape,
         color_map=mask,
         auto_trans=True,
@@ -439,7 +439,7 @@ def create_whale(old_ent: Entity | None, anim: "Animation") -> None:
 
 
     entity = Entity(
-        type="whale",
+        type=EntityType.WHALE,
         shape=whale_anim_shapes, # Animated shape list
         color_map=whale_anim_masks, # Animated mask list (basic)
         auto_trans=True,
@@ -488,7 +488,7 @@ def create_monster_entity(anim: "Animation", monster_data: list, monster_mask_da
     x = -mon_width if dir == 0 else anim.width
 
     entity = Entity(
-        type="monster",
+        type=EntityType.MONSTER,
         shape=shapes, # Animated shape list
         color_map=masks, # Basic mask list
         auto_trans=True,
@@ -549,7 +549,7 @@ def create_big_fish_1(old_ent: Entity | None, anim: "Animation") -> None:
     # 'W' for eye remains white
 
     entity = Entity(
-        type="big_fish",
+        type=EntityType.BIG_FISH,
         shape=shape,
         color_map=color_map,
         auto_trans=True,
@@ -592,7 +592,7 @@ def create_big_fish_2(old_ent: Entity | None, anim: "Animation") -> None:
     # 'W' for eye remains white
 
     entity = Entity(
-        type="big_fish",
+        type=EntityType.BIG_FISH,
         shape=shape,
         color_map=color_map,
         auto_trans=True,
