@@ -535,7 +535,7 @@ class Animation:
         self.stdscr.nodelay(True) # Make getch non-blocking
         # curses.halfdelay(1) # Or use halfdelay for 0.1s timeout
 
-        last_time = time.time()
+        last_time = time.monotonic()
         frame_delay = self.frame_delay # Configured via --fps (default 20)
 
         while True:
@@ -591,21 +591,24 @@ class Animation:
             if not self.paused or self.needs_redraw:
                  self.draw_screen()
 
-            # --- Frame Limiting ---
-            current_time = time.time()
+            # --- Frame Limiting --- (monotonic clock so wall-clock jumps
+            # don't trigger huge sleep_time values or freeze the loop).
+            current_time = time.monotonic()
             elapsed = current_time - last_time
             sleep_time = frame_delay - elapsed
             if sleep_time > 0:
                 time.sleep(sleep_time)
-            last_time = time.time() # Use current_time or time.time()? Using current is closer to target rate
+            last_time = time.monotonic()
 
 # --- Environment Creation ---
 def create_environment(anim):
+    # Verbatim Perl water-line segments; spacing matters — earlier port
+    # was off by one column in segments 1–3, distorting the wave pattern.
     water_line_segment_shapes = [
         "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
-        "^^^^ ^^^  ^^^   ^^^     ^^^^     ",
-        "^^^^      ^^^^     ^^^     ^^     ",
-        "^^      ^^^^       ^^^     ^^^^^^ "
+        "^^^^ ^^^  ^^^   ^^^    ^^^^      ",
+        "^^^^      ^^^^     ^^^    ^^     ",
+        "^^      ^^^^      ^^^    ^^^^^^  "
     ]
     segment_size = len(water_line_segment_shapes[0])
     # Use integer division //
@@ -1958,17 +1961,19 @@ def signal_handler(sig, frame):
 
 # --- Cleanup Function ---
 def cleanup():
-    """ Restore terminal settings. """
-    if 'curses' in sys.modules and curses.has_colors():
-        try:
-            curses.nocbreak()
-            curses.echo()
-            curses.endwin()
-            print("Asciiquarium exited cleanly.")
-        except curses.error:
-            # Might happen if terminal was already closed or in a weird state
-            print("Curses cleanup failed, terminal might be in an odd state.", file=sys.stderr)
-            pass # Ignore errors during cleanup
+    """ Restore terminal settings.
+
+    By the time atexit fires, curses.wrapper() has usually already called
+    endwin(); calling further curses query functions like has_colors() at
+    that point is undefined behavior (and segfaults on some libcurses
+    builds). Just attempt restoration once and swallow errors.
+    """
+    try:
+        curses.nocbreak()
+        curses.echo()
+        curses.endwin()
+    except Exception:
+        pass
 
 # --- Main Execution ---
 animation_instance = None # Global reference for signal handler
