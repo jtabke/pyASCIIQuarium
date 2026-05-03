@@ -1377,7 +1377,6 @@ def cleanup():
         pass
 
 # --- Main Execution ---
-animation_instance = None # Global reference for signal handler
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
@@ -1400,8 +1399,6 @@ def parse_args(argv=None):
     return args
 
 def main(stdscr, args):
-    global animation_instance
-
     # --- Curses Setup ---
     stdscr.clear()
     curses.curs_set(0) # Hide cursor
@@ -1409,14 +1406,12 @@ def main(stdscr, args):
     stdscr.nodelay(True) # Make getch() non-blocking
 
     # --- Create and Run Animation ---
-    animation_instance = Animation(
+    Animation(
         stdscr,
         classic_mode=args.classic,
         fps=args.fps,
         use_color=not args.no_color,
-    )
-    animation_instance.run() # Start the main loop
-
+    ).run()
     return 0
 
 
