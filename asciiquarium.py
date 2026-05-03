@@ -505,16 +505,8 @@ class Animation:
 
 
     def draw_screen(self):
-        """ Draw all entities onto the screen. """
-        if not self.needs_redraw and not any(e.is_alive for e in self.entities):
-             # Only redraw if flag is set or entities exist
-             # This check is basic, might need refinement based on entity updates
-             pass # Skip drawing if nothing changed? (Risky with animation)
-
-        self.stdscr.erase() # Clear screen
-
-        # Sort entities by Z depth for drawing (higher Z drawn first = further back)
-        # Draw from back to front
+        """ Draw all entities onto the screen, sorted back-to-front by z. """
+        self.stdscr.erase()
         sorted_entities = sorted(self.entities, key=lambda e: e.z, reverse=True)
 
         for entity in sorted_entities:
@@ -549,12 +541,11 @@ class Animation:
                                  if color_char != ' ' and color_char != '?': # Use '?' or space for default
                                      attr = self.get_color_attr(color_char)
 
-                             # Draw the character
                              try:
                                   self.stdscr.addch(current_y, current_x, char, attr)
-                                  # self.stdscr.addstr(current_y, current_x, char, attr) # Use addstr if drawing single chars causes issues
                              except curses.error:
-                                  # Handle potential error writing to bottom-right corner
+                                  # addch on the bottom-right corner of a
+                                  # window is documented to fail; ignore.
                                   pass
 
         self.stdscr.refresh()
@@ -750,11 +741,10 @@ class Animation:
 def create_environment(anim):
     water_line_segment_shapes = WATER_LINE_SEGMENTS
     segment_size = len(water_line_segment_shapes[0])
-    # Use integer division //
-    segment_repeat = anim.width // segment_size + 2 # Ensure full coverage
+    segment_repeat = anim.width // segment_size + 2
 
     for i, base_seg in enumerate(water_line_segment_shapes):
-        full_seg = (base_seg * segment_repeat)[:anim.width] # Tile and trim
+        full_seg = (base_seg * segment_repeat)[:anim.width]
         depth_key = f'water_line{i}'
         entity = Entity(
             name=f"water_seg_{i}",
@@ -786,10 +776,9 @@ def create_castle(anim):
 
 # --- Seaweed ---
 def create_all_seaweed(anim):
-    # Use integer division //
     seaweed_count = max(1, anim.width // 15)
     for _ in range(seaweed_count):
-        create_seaweed(None, anim) # Pass None for old_seaweed initially
+        create_seaweed(None, anim)
 
 def create_seaweed(old_seaweed, anim):
     # This function now acts as both the initial creator and the death callback
@@ -855,25 +844,19 @@ def create_bubble(fish, anim):
     anim.add_entity(entity)
 
 def bubble_collision(bubble, anim):
-    """ Bubble collision handler. """
     for col_obj in bubble.collisions:
         if col_obj.type == 'waterline':
             bubble.kill()
-            # Add a small 'pop' effect? (Optional)
-            # create_splat(anim, *bubble.position(), splat_char='.')
-            break # No need to check further
+            break
 
 # --- Fish ---
 def create_all_fish(anim):
-    # Adjust fish count based on screen area below waterline
-    water_line_y = 9 # Approximate top of water
-    underwater_height = max(1, anim.height - water_line_y)
-    screen_area = underwater_height * anim.width
-    # Use integer division //
-    fish_count = max(1, screen_area // 350)
-
+    # Fish density scales with the underwater area; ~350 cells per fish
+    # is the Perl original's heuristic.
+    underwater_height = max(1, anim.height - 9)
+    fish_count = max(1, (underwater_height * anim.width) // 350)
     for _ in range(fish_count):
-        create_fish(None, anim) # Pass None for old_fish initially
+        create_fish(None, anim)
 
 def create_fish(old_fish, anim):
     """ Choose between old and new fish styles based on classic mode. """
@@ -1134,8 +1117,9 @@ def create_whale(old_ent, anim):
     # X position (start offscreen)
     x = -whale_width - 5 if dir == 0 else anim.width + 5 # Add margin
 
-    # Spout alignment needs careful adjustment based on whale shape
-    spout_align_x = 11 if dir == 0 else 1 # Column offset for spout start
+    # Column offset of the spout — lines up with the blowhole on each
+    # whale shape (right-facing whale has the blowhole further right).
+    spout_align_x = 11 if dir == 0 else 1
 
     whale_anim_shapes = []
     whale_anim_masks = []
