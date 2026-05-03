@@ -851,14 +851,17 @@ def create_fish_entity(anim, fish_data):
     shape = shape_l if moving_right else shape_r  # shape_l is right-facing, shape_r is left-facing
     mask_template = mask_l if moving_right else mask_r
 
-    # Perl uses rand(2) + 0.25 → [0.25, 2.25]; the prior [0.25, 1.25] range
-    # halved peak fish speed and made the tank feel sluggish.
-    speed = random.uniform(0.25, 2.25)
+    # Calmer aquarium feel — Perl's [0.25, 2.25] makes fish whiz past too
+    # fast at the dt-scaled tick rate, so cap at 1.25.
+    speed = random.uniform(0.25, 1.25)
     vx = speed if moving_right else -speed  # Positive for right, negative for left
     vy = 0  # Fish move horizontally
 
-    # Z depth between fish_start and fish_end
-    z = random.randint(DEPTH['fish_start'], DEPTH['fish_end'])
+    # Z depth between fish_start and fish_end. Use a continuous float so
+    # two fish (which would otherwise tie at one of 18 integer buckets on
+    # a populated tank) sort deterministically — fixes the "z-masking"
+    # flicker where overlapping fish swap front/back unpredictably.
+    z = random.uniform(DEPTH['fish_start'], DEPTH['fish_end'] + 0.999)
 
     # Create the actual color map from the template
     color_map = rand_color_mask(mask_template, palette=anim.fish_palette)
@@ -960,25 +963,27 @@ def create_shark(old_ent, anim):
     # X position (start offscreen)
     x = -shark_width if dir == 0 else anim.width
 
-    # Teeth column matches the Perl original (teeth_x = -9 / width-2+9
-    # absolute → 44 / 9 relative to shark x). Lines up with the shark's
-    # mouth (the `(((` / `\|\|\|\|` cluster) so fish are eaten when they
-    # actually overlap the bite point, not the body.
-    teeth_offset_x = 44 if dir == 0 else 9
+    # Teeth column lands inside the mouth cluster of the *Python* shark
+    # art (`.((` / `(|/|/|/|/` for dir=0 around col 47-49; `\|\|\|\|`
+    # for dir=1 around col 4-12). Y offset is the row holding the teeth
+    # glyphs in both shapes.
+    teeth_offset_x = 48 if dir == 0 else 8
     teeth_offset_y = 7
     teeth_x = x + teeth_offset_x
     teeth_y = y + teeth_offset_y
 
-    # Create teeth entity (invisible, used for collision)
+    # Create teeth entity (invisible, used for collision). Note: do NOT
+    # set die_offscreen=True here. The teeth is a 1-char entity but
+    # starts offscreen with the shark (which is ~60 chars wide and only
+    # partially onscreen). die_offscreen would kill the teeth before its
+    # first move, so the shark would never bite anything. Death is
+    # driven by the shark's death callback instead.
     teeth = Entity(
         type='teeth',
-        shape="*", # Doesn't matter, it's not drawn visibly
-        pos=(teeth_x, teeth_y, DEPTH['shark'] + 1), # Z slightly in front
-        velocity=(vx, vy, 0), # Moves with the shark
-        physical=True, # Can collide
-        # Make it die with the shark - link via death callback?
-        # Or simpler: just die offscreen with shark
-        die_offscreen=True,
+        shape="*",
+        pos=(teeth_x, teeth_y, DEPTH['shark'] + 1),
+        velocity=(vx, vy, 0),
+        physical=True,
     )
     anim.add_entity(teeth)
 
