@@ -260,34 +260,41 @@ class Entity:
 
 # --- Animation Class ---
 class Animation:
-    def __init__(self, stdscr, classic_mode=False):
+    def __init__(self, stdscr, classic_mode=False, fps=20.0, use_color=True):
         self.stdscr = stdscr
         self.height, self.width = stdscr.getmaxyx()
         self.entities = []
         self.paused = False
         self.needs_redraw = True # Flag to force redraw after resize etc.
         self.classic_mode = classic_mode
+        self.frame_delay = 1.0 / fps if fps > 0 else 0.05
+        self.use_color = use_color and curses.has_colors()
         self._init_colors()
         self._last_term_size = (self.height, self.width)
 
     def _init_colors(self):
-        """ Initialize curses color pairs. """
+        """ Initialize curses color pairs (or fall back to monochrome). """
+        self.color_pairs = {}
+        if not self.use_color:
+            # Monochrome fallback: every color char maps to A_NORMAL, bold for caps.
+            for char in COLOR_CHAR_MAP:
+                attr = curses.A_BOLD if char.isupper() else curses.A_NORMAL
+                self.color_pairs[char] = attr
+            self.color_pairs['default'] = curses.A_NORMAL
+            return
+
         curses.start_color()
         curses.use_default_colors() # Allow use of default terminal background
 
-        self.color_pairs = {}
         pair_num = 1 # Start from 1, 0 is reserved for default white on black
-
         for char, (fg, attr) in COLOR_CHAR_MAP.items():
              # Use -1 for default background
              try:
                  curses.init_pair(pair_num, fg, -1)
                  self.color_pairs[char] = curses.color_pair(pair_num) | attr
                  pair_num += 1
-             except curses.error as e:
-                 # Ran out of color pairs?
-                 # Consider logging this error
-                 # print(f"Warning: Could not initialize color pair for '{char}'. {e}", file=sys.stderr)
+             except curses.error:
+                 # Ran out of color pairs.
                  pass
              if pair_num > curses.COLOR_PAIRS - 1:
                  break
@@ -531,7 +538,7 @@ class Animation:
         # curses.halfdelay(1) # Or use halfdelay for 0.1s timeout
 
         last_time = time.time()
-        frame_delay = 0.05 # Target ~20 FPS (adjust as needed)
+        frame_delay = self.frame_delay # Configured via --fps (default 20)
 
         while True:
             # --- Handle Input ---
@@ -1963,41 +1970,53 @@ def cleanup():
 # --- Main Execution ---
 animation_instance = None # Global reference for signal handler
 
-def main(stdscr):
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="asciiquarium",
+        description=f"Asciiquarium v{VERSION} - ASCII Aquarium Animation",
+    )
+    parser.add_argument('-c', '--classic', action='store_true',
+                        help="use classic (original) fish and monster graphics")
+    parser.add_argument('--fps', type=float, default=20.0, metavar='N',
+                        help="target frames per second (default: 20)")
+    parser.add_argument('--no-color', action='store_true',
+                        help="disable color; use bold/normal attributes only")
+    parser.add_argument('--seed', type=int, default=None, metavar='N',
+                        help="seed the random generator for reproducible runs")
+    parser.add_argument('--version', action='version',
+                        version=f"asciiquarium {VERSION}")
+    args = parser.parse_args(argv)
+    if args.fps <= 0:
+        parser.error("--fps must be positive")
+    return args
+
+def main(stdscr, args):
     global animation_instance
 
     # --- Curses Setup ---
     stdscr.clear()
     curses.curs_set(0) # Hide cursor
     stdscr.keypad(True) # Enable keypad mode (for KEY_RESIZE etc.)
-    # Non-blocking input needed for animation loop
     stdscr.nodelay(True) # Make getch() non-blocking
-    # curses.halfdelay(1) # Alternative: wait 0.1s for input
-
-    # Check for color support
-    if not curses.has_colors():
-        print("Error: Your terminal does not support color.", file=sys.stderr)
-        return 1
-    if not curses.can_change_color():
-         # Optional: Warn if colors might not look exactly as intended
-         # print("Warning: Terminal cannot change color definitions.", file=sys.stderr)
-         pass
-
-
-    # --- Argument Parsing ---
-    parser = argparse.ArgumentParser(description=f"Asciiquarium v{VERSION} - ASCII Aquarium Animation")
-    parser.add_argument('-c', '--classic', action='store_true',
-                        help="Use classic (original) fish and monster graphics")
-    args = parser.parse_args()
 
     # --- Create and Run Animation ---
-    animation_instance = Animation(stdscr, classic_mode=args.classic)
+    animation_instance = Animation(
+        stdscr,
+        classic_mode=args.classic,
+        fps=args.fps,
+        use_color=not args.no_color,
+    )
     animation_instance.run() # Start the main loop
 
     return 0
 
 
 if __name__ == "__main__":
+    # Parse args before entering curses so --help / --version print cleanly.
+    cli_args = parse_args()
+    if cli_args.seed is not None:
+        random.seed(cli_args.seed)
+
     # Register cleanup function to run on exit
     atexit.register(cleanup)
 
@@ -2012,7 +2031,7 @@ if __name__ == "__main__":
     exit_code = 0
     try:
         # curses.wrapper handles terminal setup/teardown
-        exit_code = curses.wrapper(main)
+        exit_code = curses.wrapper(main, cli_args)
     except curses.error as e:
          # Cleanup might have already run via atexit, but try again if wrapper fails early
          cleanup()
