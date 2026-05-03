@@ -434,8 +434,13 @@ class Animation:
                     for j, char in enumerate(line):
                         current_x = start_x + j
                         if 0 <= current_x < self.width:
-                             # Skip transparent characters
-                             if char == entity.transparent_char or (entity.auto_trans and char == ' '):
+                             # Skip transparent characters. '?' matches the
+                             # original Perl Term::Animation convention where
+                             # '?' is the default transparency marker; many of
+                             # the imported ASCII assets (complex fish, sharks,
+                             # whales, monsters, big fish) use '?' to mark
+                             # cells outside the irregular silhouette.
+                             if char == '?' or char == entity.transparent_char or (entity.auto_trans and char == ' '):
                                  continue
 
                              # Determine color/attribute
