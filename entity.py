@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import random
 import time
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Sequence, Union
 
 from constants import TICK_RATE
@@ -34,87 +35,80 @@ def shape_dimensions(shape_str: str | None) -> tuple[int, int]:
 
 
 # --- Entity Class ---
+@dataclass
 class Entity:
-    def __init__(
-        self,
-        name: str = "",
-        type: str = "",
-        shape: Shape | None = None,
-        color_map: Shape | None = None,
-        pos: Position = (0, 0, 0),
-        velocity: Velocity = (0, 0, 0),
-        anim_speed: float = 0.0,
-        default_color_char: str = 'c',
-        die_offscreen: bool = False,
-        die_time: float | None = None,
-        die_frame: int | None = None,
-        death_cb: Optional[Callable[..., Any]] = None,
-        death_cb_args: list | None = None,
-        update_cb: Optional[Callable[..., Any]] = None,
-        update_cb_args: list | None = None,
-        coll_handler: Optional[Callable[..., Any]] = None,
-        physical: bool = False,
-        transparent_char: str = ' ',
-        auto_trans: bool = False,
-    ) -> None:
+    """ One drawable thing in the tank. The fields below are the
+    constructor surface; everything else (x/y/z position, current frame,
+    cached lines/dimensions, alive flag, collisions list) is set up in
+    __post_init__ and not part of the public init signature. """
 
-        self.name = name if name else f"{type}_{random.randint(1000, 9999)}"
-        self.type = type
-        self.x, self.y, self.z = pos
-        self.vx, self.vy, self.vz = velocity[:3] # Speed in x, y, z
+    name: str = ""
+    type: str = ""
+    shape: Shape | None = None
+    color_map: Shape | None = None
+    pos: Position = (0, 0, 0)
+    velocity: Velocity = (0, 0, 0)
+    anim_speed: float = 0.0
+    default_color_char: str = 'c'
+    die_offscreen: bool = False
+    die_time: float | None = None
+    die_frame: int | None = None
+    death_cb: Optional[Callable[..., Any]] = None
+    death_cb_args: list | None = None
+    update_cb: Optional[Callable[..., Any]] = None
+    update_cb_args: list | None = None
+    coll_handler: Optional[Callable[..., Any]] = None
+    physical: bool = False
+    transparent_char: str = ' '
+    auto_trans: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            self.name = f"{self.type}_{random.randint(1000, 9999)}"
+
+        self.x, self.y, self.z = self.pos
+        self.vx, self.vy, self.vz = self.velocity[:3]
         # Optional 4th velocity element is animation speed modifier.
         # Clamp to a small positive value so update() never divides by zero.
-        modifier = velocity[3] if len(velocity) > 3 else 1.0
+        modifier = self.velocity[3] if len(self.velocity) > 3 else 1.0
         self.anim_speed_modifier = modifier if modifier > 0 else 1.0
 
-        self.shapes = shape if isinstance(shape, list) else [shape]
-        self.color_maps = color_map if isinstance(color_map, list) else [color_map] * len(self.shapes)
-
-        # Ensure color_maps length matches shapes length
+        shape = self.shape
+        color_map = self.color_map
+        self.shapes: list = shape if isinstance(shape, list) else [shape]
+        self.color_maps: list = (
+            color_map if isinstance(color_map, list)
+            else [color_map] * len(self.shapes)
+        )
         if len(self.color_maps) < len(self.shapes):
-             self.color_maps.extend([self.color_maps[-1]] * (len(self.shapes) - len(self.color_maps)))
+            self.color_maps.extend(
+                [self.color_maps[-1]] * (len(self.shapes) - len(self.color_maps))
+            )
 
-        # If auto_trans is on, preprocess each shape so only EXTERIOR
-        # spaces (leading + trailing on each line) are transparent.
-        # Interior spaces (between the first and last non-space char)
-        # remain as ' ' and render opaquely. This stops back-layer
-        # entities from showing characters through the silhouette of a
-        # front-layer entity that overlaps it — the visible bug when
-        # two fish swim past each other. The transformation is done
-        # once at construction; auto_trans is consumed here.
-        if auto_trans:
+        # Exterior-space → '?' substitution if auto_trans was set.
+        # Consumed here: subsequent draws don't re-trigger it.
+        if self.auto_trans:
             self.shapes = [self._mark_exterior_transparent(s) for s in self.shapes]
-            auto_trans = False
-        self.auto_trans = auto_trans
+            self.auto_trans = False
 
         self.current_frame = 0
-        self.anim_speed = anim_speed # Time between frames
         self.last_anim_time = time.monotonic()
 
-        self.default_color_char = default_color_char.upper() if default_color_char.isupper() else default_color_char.lower()
-        self.die_offscreen = die_offscreen
-        self.die_time = die_time
-        self.die_frame = die_frame # Die after this many animation frames shown
-        self._frames_shown = 0
-        self.death_cb = death_cb
-        self.death_cb_args = death_cb_args if death_cb_args is not None else []
-        self.update_cb = update_cb
-        self.update_cb_args = update_cb_args if update_cb_args is not None else []
-        self.coll_handler = coll_handler
-        self.physical = physical # Can participate in collisions
-        self.transparent_char = transparent_char
-        # self.auto_trans was already set above, after possible consumption
-        # via shape preprocessing.
+        # Normalize default_color_char case (preserve already-correct case).
+        c = self.default_color_char
+        self.default_color_char = c.upper() if c.isupper() else c.lower()
 
+        self.death_cb_args = list(self.death_cb_args) if self.death_cb_args else []
+        self.update_cb_args = list(self.update_cb_args) if self.update_cb_args else []
+
+        self._frames_shown = 0
         self.is_alive = True
         self._width = 0
         self._height = 0
-        self._lines = []
-        self._color_lines = []
-        self._update_dimensions() # Initial calculation
-
-        # For collision detection
-        self.collisions = []
+        self._lines: list[str] = []
+        self._color_lines: list[str] = []
+        self._update_dimensions()
+        self.collisions: list = []
 
     @staticmethod
     def _mark_exterior_transparent(shape_str: str | None) -> str | None:
