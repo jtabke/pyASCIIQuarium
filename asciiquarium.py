@@ -724,16 +724,16 @@ def create_bubble(fish, anim):
     bubble_pos_y = fish_y + fish_h // 2
     bubble_pos_z = fish_z - 1 # Bubble on top
 
-    bubble_shapes = ['.', 'o', 'O'] # Simple animation
-    bubble_vel_y = -0.5 # Move upwards (adjust speed as needed)
-    bubble_anim_speed = 0.15 # How fast bubble shape changes
+    # Match the Perl original: 5 frames where the big O lingers, full
+    # upward velocity of 1 cell per tick, and animation interval of 0.1s.
+    bubble_shapes = ['.', 'o', 'O', 'O', 'O']
 
     entity = Entity(
         shape=bubble_shapes,
         type='bubble',
         pos=(bubble_pos_x, bubble_pos_y, bubble_pos_z),
-        velocity=(0, bubble_vel_y, 0, 0.5), # Y velocity, slightly slower animation
-        anim_speed=bubble_anim_speed,
+        velocity=(0, -1, 0),
+        anim_speed=0.1,
         die_offscreen=True,
         physical=True, # Collidable
         coll_handler=bubble_collision,
@@ -1109,7 +1109,9 @@ def create_fish_entity(anim, fish_data):
     shape = shape_l if moving_right else shape_r  # shape_l is right-facing, shape_r is left-facing
     mask_template = mask_l if moving_right else mask_r
 
-    speed = random.uniform(0.25, 1.25)
+    # Perl uses rand(2) + 0.25 → [0.25, 2.25]; the prior [0.25, 1.25] range
+    # halved peak fish speed and made the tank feel sluggish.
+    speed = random.uniform(0.25, 2.25)
     vx = speed if moving_right else -speed  # Positive for right, negative for left
     vy = 0  # Fish move horizontally
 
@@ -1288,9 +1290,12 @@ def create_shark(old_ent, anim):
     # X position (start offscreen)
     x = -shark_width if dir == 0 else anim.width
 
-    # Teeth position (relative to shark) - adjust these offsets carefully!
-    teeth_offset_x = 26 if dir == 0 else 14 # Approx x-offset of mouth/teeth
-    teeth_offset_y = 7 # Approx y-offset of mouth/teeth
+    # Teeth column matches the Perl original (teeth_x = -9 / width-2+9
+    # absolute → 44 / 9 relative to shark x). Lines up with the shark's
+    # mouth (the `(((` / `\|\|\|\|` cluster) so fish are eaten when they
+    # actually overlap the bite point, not the body.
+    teeth_offset_x = 44 if dir == 0 else 9
+    teeth_offset_y = 7
     teeth_x = x + teeth_offset_x
     teeth_y = y + teeth_offset_y
 
@@ -1314,7 +1319,7 @@ def create_shark(old_ent, anim):
         color_map=shark_mask_str,
         auto_trans=True,
         pos=(x, y, DEPTH['shark']),
-        default_color_char='C', # Default Cyan
+        default_color_char='W', # Match Perl: bright white default
         velocity=(vx, vy, 0),
         die_offscreen=True,
         death_cb=shark_death, # Custom death handler
