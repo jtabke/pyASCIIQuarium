@@ -119,8 +119,10 @@ class Entity:
         self.type = type
         self.x, self.y, self.z = pos
         self.vx, self.vy, self.vz = velocity[:3] # Speed in x, y, z
-        # Optional 4th velocity element is animation speed modifier
-        self.anim_speed_modifier = velocity[3] if len(velocity) > 3 else 1.0
+        # Optional 4th velocity element is animation speed modifier.
+        # Clamp to a small positive value so update() never divides by zero.
+        modifier = velocity[3] if len(velocity) > 3 else 1.0
+        self.anim_speed_modifier = modifier if modifier > 0 else 1.0
 
         self.shapes = shape if isinstance(shape, list) else [shape]
         self.color_maps = color_map if isinstance(color_map, list) else [color_map] * len(self.shapes)
@@ -486,7 +488,11 @@ class Animation:
                 key = -1
 
             if key != -1:
-                key_char = chr(key).lower()
+                # getch() can return values > 255 for special keys (KEY_RESIZE,
+                # arrow keys, etc.); chr() on those is fine but only ASCII keys
+                # carry meaning here. Guard so unrelated keys don't take a path
+                # that assumes ASCII.
+                key_char = chr(key).lower() if 0 <= key < 256 else ''
                 if key_char == 'q':
                     break # Quit
                 elif key_char == 'p':
