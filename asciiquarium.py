@@ -39,9 +39,7 @@ import random
 import argparse
 import signal
 import sys
-import math
 import atexit
-from collections import namedtuple
 
 VERSION = "1.1 (Python)"
 NEW_FISH = True
@@ -2011,7 +2009,8 @@ def main(stdscr, args):
     return 0
 
 
-if __name__ == "__main__":
+def cli_entry():
+    """ Console-script entry point (referenced from pyproject.toml). """
     # Parse args before entering curses so --help / --version print cleanly.
     cli_args = parse_args()
     if cli_args.seed is not None:
@@ -2024,10 +2023,8 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     # SIGWINCH handling can be tricky; curses often handles it by returning
     # KEY_RESIZE from getch(). Relying on that is usually safer.
-    signal.signal(signal.SIGWINCH, signal_handler) # Let's try handling it
+    signal.signal(signal.SIGWINCH, signal_handler)
 
-
-    # Initialize curses screen using wrapper
     exit_code = 0
     try:
         # curses.wrapper handles terminal setup/teardown
@@ -2045,10 +2042,9 @@ if __name__ == "__main__":
          import traceback
          traceback.print_exc()
          exit_code = 1
-    finally:
-        # Explicitly call cleanup just in case atexit didn't fire (e.g., os._exit)
-        # Although atexit should normally cover SIGINT and normal exit.
-        # cleanup() # Probably redundant with atexit
-        pass
 
     sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    cli_entry()

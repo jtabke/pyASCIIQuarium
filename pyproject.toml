@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyasciiquarium"
+version = "1.1.0"
+description = "Python/curses port of Kirk Baucom's Perl asciiquarium animation."
+readme = { text = "Python/curses port of Kirk Baucom's Perl asciiquarium animation. Run `asciiquarium` after install. Press 'h' or '?' inside the program for controls.", content-type = "text/plain" }
+requires-python = ">=3.8"
+license = { text = "GPL-2.0-or-later" }
+authors = [{ name = "Kirk Baucom", email = "kbaucom@schizoid.com" }]
+keywords = ["ascii", "animation", "curses", "aquarium", "terminal"]
+classifiers = [
+    "Environment :: Console :: Curses",
+    "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
+    "Operating System :: POSIX",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Artistic Software",
+]
+dependencies = [
+    'windows-curses; platform_system == "Windows"',
+]
+
+[project.scripts]
+asciiquarium = "asciiquarium:cli_entry"
+
+[tool.setuptools]
+py-modules = ["asciiquarium"]
