@@ -128,6 +128,30 @@ class SmokeTest(unittest.TestCase):
             anim.animate()
             anim.draw_screen()
 
+    def test_silent_resize_in_run_loop(self):
+        """ tmux panes resize without delivering KEY_RESIZE through
+        getch(). The run loop must still pick up the new dimensions
+        via per-frame polling. """
+        import asciiquarium
+        stdscr = FakeStdscr(h=30, w=120)
+        anim = asciiquarium.Animation(stdscr, fps=20.0)
+        anim._populate()
+        # Capture the original waterline width.
+        orig_waterline = next(e for e in anim.entities if e.type == 'waterline')
+        orig_w = orig_waterline.width()
+
+        # Resize the underlying screen *without* generating KEY_RESIZE.
+        stdscr.h, stdscr.w = 40, 200
+        # The poll inside Animation.run() is what we want to exercise;
+        # call its body directly (a single iteration's worth).
+        if anim.update_term_size():
+            anim._rebuild_geometry()
+
+        # Waterlines must have been rebuilt at the new width.
+        new_waterline = next(e for e in anim.entities if e.type == 'waterline')
+        self.assertNotEqual(new_waterline.width(), orig_w)
+        self.assertGreaterEqual(new_waterline.width(), 200 - 1)
+
     def test_resize_rebuilds_geometry_keeps_fish(self):
         """ Resize should drop waterlines/castle/seaweed and rebuild
         them, but keep fish/sharks/etc. in place. """

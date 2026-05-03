@@ -659,6 +659,20 @@ class Animation:
         frame_delay = self.frame_delay # Configured via --fps (default 20)
 
         while True:
+            # --- Poll terminal size every frame.
+            # Some hosts (notably tmux panes) don't reliably deliver
+            # KEY_RESIZE through getch(), so we don't depend on the key
+            # alone — we ask the screen directly each tick. update_term_size()
+            # returns True only when dimensions actually changed, so this
+            # is cheap.
+            if self.update_term_size():
+                if self._too_small():
+                    self.remove_all_entities()
+                elif not self.entities:
+                    self._populate()
+                else:
+                    self._rebuild_geometry()
+
             # --- Handle Input ---
             try:
                 key = self.stdscr.getch()
@@ -681,17 +695,15 @@ class Animation:
                     self.remove_all_entities()
                     if not self._too_small():
                         self._populate()
+                # KEY_RESIZE is still handled here in case it does fire
+                # — but the per-frame poll above is the real workhorse.
                 elif key == curses.KEY_RESIZE:
                      if self.update_term_size():
                           if self._too_small():
-                              # Below threshold — drop everything; the
-                              # next big-enough resize will repopulate.
                               self.remove_all_entities()
                           elif not self.entities:
                               self._populate()
                           else:
-                              # Keep fish/sharks/whales in place; only
-                              # rebuild the geometry-dependent layers.
                               self._rebuild_geometry()
 
             # --- Update and Draw ---
@@ -1327,23 +1339,13 @@ def center_text(width, text):
 
 # --- Signal Handling ---
 def signal_handler(sig, frame):
-    """ Handles signals like Ctrl+C and window resize. """
-    global animation_instance # Need access to the animation instance
-
+    """ Cleanly exit on Ctrl+C; SIGWINCH is intentionally NOT handled
+    here so ncurses' own handler stays in place. (When a Python signal
+    handler is registered for SIGWINCH it shadows the ncurses one, and
+    the KEY_RESIZE event no longer makes it into getch()'s queue —
+    which is the proximate cause of "tmux pane resize does nothing".) """
     if sig == signal.SIGINT:
-        # Cleanly exit on Ctrl+C
-        sys.exit(0) # atexit handler should cleanup curses
-    elif sig == signal.SIGWINCH:
-        # Handle window resize
-        if animation_instance:
-             # Flag for the main loop to handle resize
-             # Simple approach: let getch return KEY_RESIZE
-             # More direct: call update_term_size here, but beware of issues
-             # calling curses functions directly from signal handlers.
-             # Setting a flag is safer.
-             animation_instance.needs_redraw = True
-             # The getch() in the main loop should return KEY_RESIZE
-             pass
+        sys.exit(0)  # atexit handler will cleanup curses
 
 
 # --- Cleanup Function ---
@@ -1416,11 +1418,10 @@ def cli_entry():
     # Register cleanup function to run on exit
     atexit.register(cleanup)
 
-    # Setup signal handlers
+    # Only handle SIGINT here. SIGWINCH is left to ncurses (registering
+    # a Python handler would shadow ncurses' own and break KEY_RESIZE
+    # delivery, especially inside tmux panes).
     signal.signal(signal.SIGINT, signal_handler)
-    # SIGWINCH handling can be tricky; curses often handles it by returning
-    # KEY_RESIZE from getch(). Relying on that is usually safer.
-    signal.signal(signal.SIGWINCH, signal_handler)
 
     exit_code = 0
     try:
