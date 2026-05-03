@@ -462,6 +462,54 @@ class Animation:
         self.needs_redraw = False
 
 
+    def _show_help(self):
+        """ Pause and display a help overlay until any key is pressed. """
+        was_paused = self.paused
+        self.paused = True
+        lines = [
+            f"Asciiquarium v{VERSION}",
+            "",
+            "  q       quit",
+            "  p       pause / resume",
+            "  r       redraw / restart",
+            "  h, ?    show this help",
+            "",
+            "Press any key to return.",
+        ]
+        box_w = max(len(line) for line in lines) + 4
+        box_h = len(lines) + 2
+        start_y = max(0, (self.height - box_h) // 2)
+        start_x = max(0, (self.width - box_w) // 2)
+
+        attr = self.get_color_attr('W')
+        self.stdscr.erase()
+        try:
+            for i in range(box_h):
+                row = start_y + i
+                if row >= self.height:
+                    break
+                if i == 0 or i == box_h - 1:
+                    text = "+" + "-" * (box_w - 2) + "+"
+                else:
+                    body = lines[i - 1]
+                    text = "| " + body.ljust(box_w - 4) + " |"
+                self.stdscr.addnstr(row, start_x, text, max(0, self.width - start_x), attr)
+        except curses.error:
+            pass
+        self.stdscr.refresh()
+
+        # Wait (blocking) for any key.
+        self.stdscr.nodelay(False)
+        try:
+            self.stdscr.getch()
+        except curses.error:
+            pass
+        finally:
+            self.stdscr.nodelay(True)
+
+        self.paused = was_paused
+        self.needs_redraw = True
+
     def run(self):
         """ Main animation loop. """
         global NEW_FISH, NEW_MONSTER # Allow modification based on classic mode
@@ -502,6 +550,8 @@ class Animation:
                     break # Quit
                 elif key_char == 'p':
                     self.paused = not self.paused
+                elif key_char in ('h', '?'):
+                    self._show_help()
                 elif key_char == 'r':
                     # Redraw/Restart Logic
                     self.remove_all_entities()
