@@ -123,6 +123,10 @@ def create_bubble(fish: Entity, anim: "Animation") -> None:
     # upward velocity of 1 cell per tick, and animation interval of 0.1s.
     bubble_shapes = ['.', 'o', 'O', 'O', 'O']
 
+    # No die_frame: bubbles live until they hit the waterline (via
+    # bubble_collision) or escape the screen. The previous die_frame=15
+    # cap meant a bubble from a fish in the lower half of the tank
+    # would expire mid-water — never reaching the surface to pop.
     entity = Entity(
         shape=bubble_shapes,
         type=EntityType.BUBBLE,
@@ -130,10 +134,9 @@ def create_bubble(fish: Entity, anim: "Animation") -> None:
         velocity=(0, -1, 0),
         anim_speed=0.1,
         die_offscreen=True,
-        physical=True, # Collidable
+        physical=True,
         coll_handler=bubble_collision,
-        default_color_char='C', # Bright Cyan
-        die_frame=15, # Die after animating a few times if not popped
+        default_color_char='C',
     )
     anim.add_entity(entity)
 
