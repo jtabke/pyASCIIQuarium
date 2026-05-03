@@ -85,6 +85,21 @@ COLOR_CHAR_MAP = {
     'W': (curses.COLOR_WHITE, curses.A_BOLD),
 }
 
+# Extra fish-color shades available on 256-color terminals. The chars are
+# kept distinct from any digit/letter that appears in mask templates so
+# they can be used as random substitutes for 1-9 without collision.
+EXTENDED_COLOR_MAP = {
+    # Char: xterm-256 index
+    'o': 208,  # orange
+    'p': 213,  # pink
+    'l': 154,  # lime
+    't': 51,   # bright teal/cyan
+    'P': 165,  # purple
+    'O': 220,  # gold
+}
+
+BASE_FISH_PALETTE = ['c', 'C', 'r', 'R', 'y', 'Y', 'b', 'B', 'g', 'G', 'm', 'M']
+
 # Z depth at which certain items occur
 DEPTH = {
     # no gui yet
@@ -286,6 +301,7 @@ class Animation:
     def _init_colors(self):
         """ Initialize curses color pairs (or fall back to monochrome). """
         self.color_pairs = {}
+        self.fish_palette = list(BASE_FISH_PALETTE)
         if not self.use_color:
             # Monochrome fallback: every color char maps to A_NORMAL, bold for caps.
             for char in COLOR_CHAR_MAP:
@@ -315,8 +331,23 @@ class Animation:
              try:
                   curses.init_pair(pair_num, curses.COLOR_WHITE, -1)
                   self.color_pairs['default'] = curses.color_pair(pair_num) | curses.A_NORMAL
+                  pair_num += 1
              except curses.error:
                   self.color_pairs['default'] = curses.color_pair(0) # Fallback
+
+        # 256-color enrichment: register extra shades and expose them in
+        # the fish palette so rand_color_mask can pick them.
+        if curses.COLORS >= 256:
+            for char, color_idx in EXTENDED_COLOR_MAP.items():
+                if pair_num > curses.COLOR_PAIRS - 1:
+                    break
+                try:
+                    curses.init_pair(pair_num, color_idx, -1)
+                    self.color_pairs[char] = curses.color_pair(pair_num)
+                    self.fish_palette.append(char)
+                    pair_num += 1
+                except curses.error:
+                    pass
 
 
     def get_color_attr(self, color_char):
@@ -1112,11 +1143,15 @@ def get_old_fish_data():
     ]
     return data
 
-def rand_color_mask(color_mask_template):
-    """ Replaces digits 1-9 in a mask template with random color chars. """
+def rand_color_mask(color_mask_template, palette=None):
+    """ Replaces digits 1-9 in a mask template with random color chars.
+
+    `palette` defaults to the original 12-color set; pass anim.fish_palette
+    to draw from the extended 256-color set when available.
+    """
     if not color_mask_template:
         return None
-    colors = ['c','C','r','R','y','Y','b','B','g','G','m','M']
+    colors = palette if palette else BASE_FISH_PALETTE
     mask = color_mask_template
     # Replace numbers (except 4 which is White) with random colors
     for i in range(1, 10):
@@ -1150,7 +1185,7 @@ def create_fish_entity(anim, fish_data):
     z = random.randint(DEPTH['fish_start'], DEPTH['fish_end'])
 
     # Create the actual color map from the template
-    color_map = rand_color_mask(mask_template)
+    color_map = rand_color_mask(mask_template, palette=anim.fish_palette)
 
     # Calculate initial position
     temp_entity = Entity(shape=shape)  # Temp to get dimensions
@@ -1817,7 +1852,7 @@ def create_big_fish_1(old_ent, anim):
 
     # Apply random colors to '1' and '2' in the mask
     # Let '1' be the main body color, '2' be the highlight
-    colors = ['c','C','r','R','y','Y','b','B','g','G','m','M']
+    colors = anim.fish_palette
     body_color = random.choice(colors)
     highlight_color = random.choice([c for c in colors if c != body_color]) # Different highlight
     color_map = mask_template.replace('1', body_color).replace('2', highlight_color)
@@ -1921,7 +1956,7 @@ def create_big_fish_2(old_ent, anim):
     x = -fish_width if dir == 0 else anim.width
 
     # Apply random colors to '1' and '2'
-    colors = ['c','C','r','R','y','Y','b','B','g','G','m','M']
+    colors = anim.fish_palette
     body_color = random.choice(colors)
     fin_color = random.choice([c for c in colors if c != body_color])
     color_map = mask_template.replace('1', body_color).replace('2', fin_color)
