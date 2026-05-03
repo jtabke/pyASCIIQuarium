@@ -56,8 +56,6 @@ from assets import (
 )
 
 VERSION = "1.1 (Python)"
-NEW_FISH = True
-NEW_MONSTER = True
 
 # Velocity values across the codebase (fish vx ~0.25–2.25, shark/monster 2.0,
 # whale/ship 1.0, bubble vy=-1) are calibrated for the Perl original, which
@@ -351,6 +349,11 @@ class Animation:
         self.paused = False
         self.needs_redraw = True # Flag to force redraw after resize etc.
         self.classic_mode = classic_mode
+        # Classic mode disables both the expanded fish set and the
+        # newer-style sea monster (these are the only "new" features
+        # the original Perl asciiquarium gates on the same flag).
+        self.use_new_fish = not classic_mode
+        self.use_new_monster = not classic_mode
         self.frame_delay = 1.0 / fps if fps > 0 else 0.05
         self.use_color = use_color and curses.has_colors()
         self._init_colors()
@@ -669,13 +672,6 @@ class Animation:
 
     def run(self):
         """ Main animation loop. """
-        global NEW_FISH, NEW_MONSTER # Allow modification based on classic mode
-
-        # Set classic mode flags if specified
-        if self.classic_mode:
-            NEW_FISH = False
-            NEW_MONSTER = False
-
         if not self._too_small():
             self._populate()
 
@@ -880,8 +876,8 @@ def create_all_fish(anim):
         create_fish(None, anim) # Pass None for old_fish initially
 
 def create_fish(old_fish, anim):
-    """ Chooses between old and new fish styles based on global flag. """
-    if NEW_FISH:
+    """ Choose between old and new fish styles based on classic mode. """
+    if anim.use_new_fish:
         if random.randint(0, 11) > 8:
             create_new_fish_entity(anim)
         else:
@@ -1181,10 +1177,10 @@ def create_whale(old_ent, anim):
 
 # --- Sea Monster ---
 def create_monster(old_ent, anim):
-    if NEW_MONSTER:
-         create_new_monster_entity(anim)
+    if anim.use_new_monster:
+        create_new_monster_entity(anim)
     else:
-         create_old_monster_entity(anim)
+        create_old_monster_entity(anim)
 
 def get_new_monster_data():
     return NEW_MONSTER_FRAMES, NEW_MONSTER_MASKS
@@ -1237,12 +1233,9 @@ def create_old_monster_entity(anim):
 
 # --- Big Fish ---
 def create_big_fish(old_ent, anim):
-    """ Chooser for different big fish types. """
-    if NEW_FISH:
-        if random.randint(0, 2) > 0: # 2/3 chance for type 2
-             create_big_fish_2(old_ent, anim)
-        else:
-             create_big_fish_1(old_ent, anim)
+    """ Choose between big_fish_1 and big_fish_2 based on classic mode. """
+    if anim.use_new_fish and random.randint(0, 2) > 0:  # 2/3 chance for type 2
+        create_big_fish_2(old_ent, anim)
     else:
         create_big_fish_1(old_ent, anim)
 
