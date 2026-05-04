@@ -44,10 +44,11 @@ module layout.
 """
 
 from animation import Animation
+from collision import CollisionEvent, detect_collisions
 from cli import cli_entry, cleanup, main, parse_args, signal_handler
 from constants import (
     BASE_FISH_PALETTE, COLOR_CHAR_MAP, COLOR_MAP, DEPTH,
-    EXTENDED_COLOR_MAP, TICK_RATE, VERSION,
+    EXTENDED_COLOR_MAP, EntityType, TICK_RATE, VERSION,
 )
 from creatures import (
     RANDOM_OBJECT_POOL,
@@ -61,6 +62,7 @@ from creatures import (
     get_old_fish_data, get_old_monster_data, rand_color_mask, shark_death,
 )
 from entity import Entity, shape_dimensions
+from sprite import MaskMode, SpriteFrame, masks_overlap
 
 
 if __name__ == "__main__":

@@ -45,6 +45,7 @@ python3 asciiquarium.py
 | `q`      | quit                    |
 | `p`      | pause / resume          |
 | `r`      | redraw / reshuffle tank |
+| `m`      | cycle mask debug overlay |
 | `h`, `?` | show in-app help        |
 
 ## Flags
@@ -62,7 +63,9 @@ python3 asciiquarium.py
 
 ## Layout
 
-- `asciiquarium.py` — engine: entity, animation, rendering, CLI.
+- `asciiquarium.py` — thin entry point and public re-exports.
+- `animation.py`, `entity.py`, `renderer.py`, `collision.py`, `sprite.py` —
+  main loop, entity state, rendering, collision, and parsed ASCII-art masks.
 - `assets.py` — every shape and color mask, kept separate so adding a
   new fish doesn't churn the engine file.
 - `tests/` — `python3 -m unittest tests.test_smoke` runs the suite.

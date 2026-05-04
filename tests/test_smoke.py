@@ -128,22 +128,22 @@ class SmokeTest(unittest.TestCase):
             anim.animate()
             anim.draw_screen()
 
-    def test_bubble_pops_at_waterline(self):
-        """ Generic-bbox collision detection must let bubbles bump into
-        the waterline and trigger their coll_handler — previously the
-        check_collisions function early-returned when no shark teeth
-        were on screen, so bubbles never popped. """
+    def test_bubble_pops_at_visible_waterline_cell(self):
+        """ Shape-aware collision still lets bubbles pop at the waterline,
+        but now the waterline's transparent spaces are not physical. """
         import asciiquarium
         anim = asciiquarium.Animation(FakeStdscr(h=30, w=120), fps=20.0)
         asciiquarium.create_environment(anim)
         asciiquarium.create_old_fish_entity(anim)
         fish = next(e for e in anim.entities if e.type == 'fish')
         fish.x, fish.y = 50, 20
-        # Spawn a bubble directly under the waterline (waterlines are
-        # at y=5..8) and warp it up so the next tick overlaps.
         asciiquarium.create_bubble(fish, anim)
         bubble = next(e for e in anim.entities if e.type == 'bubble')
-        bubble.y = 8  # Sitting on the lowest waterline row.
+        waterline = next(e for e in anim.entities if e.type == 'waterline' and int(e.y) == 8)
+        visible_x = next(i for i, ch in enumerate(waterline._lines[0]) if ch != ' ')
+        bubble.x = visible_x
+        bubble.y = waterline.y
+        bubble.vy = 0
         anim.animate()
         # bubble_collision should have killed it; the entity is removed
         # in the same animate() pass.
@@ -171,20 +171,193 @@ class SmokeTest(unittest.TestCase):
         # row 2 was "  \\/" → "??\\/"
         self.assertEqual(e._lines[2], '??\\/')
 
-    def test_foreground_bbox_claim_blocks_back_fish_bleed(self):
-        """ Two overlapping fish: the closer one's bounding box must
-        prevent the further one from rendering anything inside that
-        rectangle, including through the closer fish's transparent
-        rows/cols. The castle behind both should still poke through
-        the closer fish's transparent cells (background pass writes
-        first). """
-        import random
-        random.seed(0)
+    def test_auto_trans_flood_fill_is_opt_in(self):
+        """ Default auto_trans is row-based for classic open ASCII fish;
+        true flood-fill remains available for closed-shape experiments. """
+        import asciiquarium
+        row = asciiquarium.Entity(shape="X X", auto_trans=True)
+        self.assertEqual(row._lines[0], 'X X')
+
+        flood = asciiquarium.Entity(
+            shape="X X",
+            auto_trans=True,
+            auto_trans_mode='flood',
+        )
+        self.assertEqual(flood._lines[0], 'X?X')
+
+    def test_sprite_frame_masks_and_overlap(self):
+        """ SpriteFrame exposes visible/silhouette masks directly. """
+        from sprite import MaskMode, SpriteFrame, masks_overlap
+
+        frame = SpriteFrame.parse('?X ')
+        self.assertFalse(frame.contains(MaskMode.VISIBLE, 0, 0))
+        self.assertTrue(frame.contains(MaskMode.VISIBLE, 1, 0))
+        self.assertFalse(frame.contains(MaskMode.VISIBLE, 2, 0))
+        self.assertFalse(frame.contains(MaskMode.SILHOUETTE, 0, 0))
+        self.assertTrue(frame.contains(MaskMode.SILHOUETTE, 1, 0))
+        self.assertTrue(frame.contains(MaskMode.SILHOUETTE, 2, 0))
+
+        probe = SpriteFrame.parse('*')
+        hit, point = masks_overlap(frame, 0, 0, MaskMode.VISIBLE,
+                                   probe, 0, 0, MaskMode.VISIBLE)
+        self.assertFalse(hit)
+        self.assertIsNone(point)
+        hit, point = masks_overlap(frame, 0, 0, MaskMode.VISIBLE,
+                                   probe, 1, 0, MaskMode.VISIBLE)
+        self.assertTrue(hit)
+        self.assertEqual(point, (1, 0))
+
+    def test_collision_ignores_transparent_cells_after_bbox_overlap(self):
+        """ AABB overlap is only the broad phase; actual collision uses
+        sprite masks, so '?' cells are not physical. """
+        import asciiquarium as aq
+        anim = aq.Animation(FakeStdscr(h=10, w=20), fps=20.0)
+        handler = lambda *_args: None
+        target = aq.Entity(
+            type='fish',
+            shape='?X',
+            pos=(5, 5, 1),
+            physical=True,
+            collision_mask='visible',
+            coll_handler=handler,
+        )
+        probe = aq.Entity(
+            type='teeth',
+            shape='*',
+            pos=(5, 5, 0),
+            physical=True,
+            collision_mask='visible',
+        )
+        anim.add_entity(target)
+        anim.add_entity(probe)
+
+        anim.check_collisions()
+        self.assertEqual(target.collisions, [])
+
+        probe.x = 6  # Now overlaps the visible X cell.
+        anim.check_collisions()
+        self.assertEqual(target.collisions, [probe])
+
+    def test_collision_events_include_hit_point(self):
+        """ Collision detection keeps a modern event with impact point
+        alongside the legacy collisions list. """
+        import asciiquarium as aq
+        anim = aq.Animation(FakeStdscr(h=10, w=20), fps=20.0)
+        handler = lambda *_args: None
+        target = aq.Entity(
+            type='fish',
+            shape='?X',
+            pos=(5, 5, 1),
+            physical=True,
+            collision_mask=aq.MaskMode.VISIBLE,
+            coll_handler=handler,
+        )
+        probe = aq.Entity(
+            type='teeth',
+            shape='*',
+            pos=(6, 5, 0),
+            physical=True,
+            collision_mask=aq.MaskMode.VISIBLE,
+        )
+        anim.add_entity(target)
+        anim.add_entity(probe)
+
+        anim.check_collisions()
+        self.assertEqual(target.collisions, [probe])
+        self.assertEqual(target.collision_events[0].other, probe)
+        self.assertEqual(target.collision_events[0].point, (6, 5))
+
+    def test_silhouette_collision_includes_interior_blanks(self):
+        """ Entities can opt into silhouette masks so interior spaces are
+        part of the body while exterior '?' remains transparent. """
+        import asciiquarium as aq
+        anim = aq.Animation(FakeStdscr(h=10, w=20), fps=20.0)
+        handler = lambda *_args: None
+        target = aq.Entity(
+            type='fish',
+            shape='X X',
+            pos=(5, 5, 1),
+            physical=True,
+            collision_mask='silhouette',
+            coll_handler=handler,
+        )
+        probe = aq.Entity(
+            type='teeth',
+            shape='*',
+            pos=(6, 5, 0),
+            physical=True,
+            collision_mask='visible',
+        )
+        anim.add_entity(target)
+        anim.add_entity(probe)
+
+        anim.check_collisions()
+        self.assertEqual(target.collisions, [probe])
+
+    def test_renderer_uses_entity_default_color_when_mask_missing(self):
+        """ Missing color-mask cells must keep the entity default color,
+        not fall back to the terminal default pair. """
+        import asciiquarium as aq
+
+        class Cap:
+            def __init__(self, h=5, w=10):
+                self.h, self.w = h, w
+                self.attrs = [[None] * w for _ in range(h)]
+            def getmaxyx(self): return (self.h, self.w)
+            def getch(self): return -1
+            def erase(self):
+                self.attrs = [[None] * self.w for _ in range(self.h)]
+            def clear(self): self.erase()
+            def refresh(self): pass
+            def nodelay(self, _): pass
+            def keypad(self, _): pass
+            def addnstr(self, *a, **k): pass
+            def addstr(self, *a, **k): pass
+            def addch(self, y, x, ch, attr=0):
+                if 0 <= y < self.h and 0 <= x < self.w:
+                    self.attrs[y][x] = attr
+
+        stdscr = Cap()
+        anim = aq.Animation(stdscr, fps=20.0)
+        entity = aq.Entity(
+            shape='X',
+            color_map='',
+            pos=(2, 2, 1),
+            default_color_char='G',
+        )
+        anim.add_entity(entity)
+        anim.draw_screen()
+        self.assertEqual(stdscr.attrs[2][2], anim.get_color_attr('G'))
+
+    def test_shark_teeth_collision_proxy_is_red(self):
+        """ The visible one-cell teeth proxy should use bright red. """
+        import asciiquarium as aq
+        anim = aq.Animation(FakeStdscr(h=30, w=120), fps=20.0)
+        aq.create_shark(None, anim)
+        teeth = next(e for e in anim.entities if e.type == aq.EntityType.TEETH)
+        self.assertEqual(teeth.default_color_char, 'R')
+
+    def test_monster_factory_uses_fast_animation_cycle(self):
+        """ Monsters should visibly undulate while crossing the screen,
+        not wait several seconds between frames. """
+        import asciiquarium as aq
+        anim = aq.Animation(FakeStdscr(h=30, w=120), fps=20.0)
+        aq.create_monster_entity(anim, *aq.get_new_monster_data())
+        monster = next(e for e in anim.entities if e.type == aq.EntityType.MONSTER)
+        self.assertEqual(monster.default_color_char, 'G')
+        self.assertEqual(monster.anim_speed, 0.25)
+        self.assertEqual(monster.anim_speed_modifier, 1.0)
+
+    def test_foreground_uses_shape_mask_not_bbox_claim(self):
+        """ Foreground occlusion claims the art silhouette, not the full
+        rectangle: '?' exterior cells let the back entity show through,
+        while an interior blank blocks both foreground and background
+        bleed-through. """
         import asciiquarium as aq
 
         # Fake stdscr that captures every addch into a 2D grid.
         class Cap:
-            def __init__(self, h=20, w=60):
+            def __init__(self, h=10, w=20):
                 self.h, self.w = h, w
                 self.grid = [[' '] * w for _ in range(h)]
             def getmaxyx(self): return (self.h, self.w)
@@ -203,38 +376,40 @@ class SmokeTest(unittest.TestCase):
 
         stdscr = Cap()
         anim = aq.Animation(stdscr, fps=20.0)
-        aq.create_old_fish_entity(anim)
-        aq.create_old_fish_entity(anim)
-        fish_a, fish_b = [e for e in anim.entities if e.type == 'fish']
-        # Front fish (lower z = closer) at (5, 10).
-        fish_a.x, fish_a.y, fish_a.z = 5, 10, 5
-        # Back fish overlaps front horizontally.
-        fish_b.x, fish_b.y, fish_b.z = 7, 11, 12
+        front = aq.Entity(
+            type='fish',
+            shape="X?X\nX X",
+            pos=(5, 5, 1),
+            occlusion_mask='silhouette',
+        )
+        back = aq.Entity(
+            type='fish',
+            shape="BBB\nBBB",
+            pos=(5, 5, 2),
+            occlusion_mask='visible',
+        )
+        castle = aq.Entity(
+            name='castle',
+            shape="CCC\nCCC",
+            pos=(5, 5, 22),
+        )
+        seaweed = aq.Entity(
+            type=aq.EntityType.SEAWEED,
+            shape="SSS\nSSS",
+            pos=(5, 5, 21),
+        )
+        anim.add_entity(castle)
+        anim.add_entity(seaweed)
+        anim.add_entity(back)
+        anim.add_entity(front)
         anim.draw_screen()
 
-        # Inside front fish's bounding box, no character from the back
-        # fish should appear. Front bbox: cols [5, 5+w), rows [10, 10+h).
-        fa_x1 = int(fish_a.x)
-        fa_x2 = fa_x1 + fish_a.width()
-        fa_y1 = int(fish_a.y)
-        fa_y2 = fa_y1 + fish_a.height()
-        front_lines = fish_a._lines
-        for y in range(fa_y1, fa_y2):
-            row_idx = y - fa_y1
-            line = front_lines[row_idx] if row_idx < len(front_lines) else ''
-            for x in range(fa_x1, fa_x2):
-                col_idx = x - fa_x1
-                shape_char = line[col_idx] if col_idx < len(line) else ' '
-                drawn = stdscr.grid[y][x]
-                if shape_char in ('?', ' '):
-                    # Transparent cell of the front fish: must be empty
-                    # in this scene (no castle, nothing else drew here).
-                    self.assertEqual(drawn, ' ',
-                        f'cell ({y},{x}) should be empty but contains {drawn!r}')
-                else:
-                    # Opaque cell: must show the front fish's char.
-                    self.assertEqual(drawn, shape_char,
-                        f'cell ({y},{x}) expected {shape_char!r} got {drawn!r}')
+        self.assertEqual(stdscr.grid[5][5], 'X')
+        self.assertEqual(stdscr.grid[5][6], 'B')  # '?' did not claim foreground.
+        self.assertEqual(stdscr.grid[5][7], 'X')
+        self.assertEqual(stdscr.grid[6][5], 'X')
+        self.assertEqual(stdscr.grid[6][6], ' ')  # Interior blank erased bg/fg.
+        self.assertEqual(stdscr.grid[6][7], 'X')
 
     def test_silent_resize_in_run_loop(self):
         """ tmux panes resize without delivering KEY_RESIZE through

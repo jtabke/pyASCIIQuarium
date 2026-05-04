@@ -27,6 +27,7 @@ from assets import (
 )
 from constants import BASE_FISH_PALETTE, DEPTH, EntityType
 from entity import Entity, shape_dimensions
+from sprite import MaskMode
 
 
 # --- Environment Creation ---
@@ -45,6 +46,7 @@ def create_environment(anim: "Animation") -> None:
             pos=(0, i + 5, DEPTH[depth_key]), # Y position increases downwards
             default_color_char='c', # Cyan
             physical=True, # Bubbles collide with this
+            collision_mask=MaskMode.VISIBLE,
         )
         anim.add_entity(entity)
 
@@ -135,6 +137,8 @@ def create_bubble(fish: Entity, anim: "Animation") -> None:
         anim_speed=0.1,
         die_offscreen=True,
         physical=True,
+        collision_mask=MaskMode.VISIBLE,
+        occlusion_mask=MaskMode.VISIBLE,
         coll_handler=bubble_collision,
         default_color_char='C',
     )
@@ -241,6 +245,8 @@ def create_fish_entity(anim: "Animation", fish_data: list) -> None:
         die_offscreen=True,
         death_cb=create_fish,  # Respawn a new fish when this one dies
         physical=True,
+        collision_mask=MaskMode.SILHOUETTE,
+        occlusion_mask=MaskMode.SILHOUETTE,
         coll_handler=fish_collision,
         default_color_char='y',  # Default Yellow if mask is incomplete
     )
@@ -261,6 +267,22 @@ def fish_update(fish: Entity, anim: "Animation") -> None:
 
 def fish_collision(fish: Entity, anim: "Animation") -> None:
     """ Fish collision handler. """
+    events = getattr(fish, 'collision_events', [])
+    if events:
+        for event in events:
+            # Only check collision with 'teeth' type (from shark)
+            if event.other.type == EntityType.TEETH:
+                # Smaller fish get eaten. Use the mask hit point so the
+                # splat appears where the bite actually landed.
+                if fish.height() <= 5:
+                    hit_x, hit_y = event.point
+                    create_splat(anim, hit_x, hit_y, fish.z)
+                    fish.kill()
+                    break # Fish is dead, stop checking
+        return
+
+    # Backward-compatible fallback for callers/tests that manually fill
+    # fish.collisions without collision_events.
     for col_obj in fish.collisions:
          # Only check collision with 'teeth' type (from shark)
         if col_obj.type == EntityType.TEETH:
@@ -335,6 +357,9 @@ def create_shark(old_ent: Entity | None, anim: "Animation") -> None:
         pos=(teeth_x, teeth_y, DEPTH['shark'] + 1),
         velocity=(vx, vy, 0),
         physical=True,
+        collision_mask=MaskMode.VISIBLE,
+        occlusion_mask=MaskMode.VISIBLE,
+        default_color_char='R',
     )
     anim.add_entity(teeth)
 
@@ -347,6 +372,7 @@ def create_shark(old_ent: Entity | None, anim: "Animation") -> None:
         pos=(x, y, DEPTH['shark']),
         default_color_char='W', # Match Perl: bright white default
         velocity=(vx, vy, 0),
+        occlusion_mask=MaskMode.SILHOUETTE,
         die_offscreen=True,
         death_cb=shark_death, # Custom death handler
         death_cb_args=[teeth], # Pass teeth entity to death callback
@@ -389,6 +415,7 @@ def create_ship(old_ent: Entity | None, anim: "Animation") -> None:
         pos=(x, y, DEPTH['water_gap1']), # Z-depth for waterline effect
         default_color_char='Y', # Yellow default
         velocity=(vx, vy, 0),
+        occlusion_mask=MaskMode.SILHOUETTE,
         die_offscreen=True,
         death_cb=create_random_object, # Spawn next random object
     )
@@ -449,6 +476,7 @@ def create_whale(old_ent: Entity | None, anim: "Animation") -> None:
         pos=(x, y, DEPTH['water_gap2']),
         default_color_char='B', # Blue default
         velocity=(vx, vy, 0, 1.0), # 4th arg = animation speed modifier (1.0 normal)
+        occlusion_mask=MaskMode.SILHOUETTE,
         anim_speed=0.8, # Time between animation frames (whale/spout cycle)
         die_offscreen=True,
         death_cb=create_random_object,
@@ -497,8 +525,12 @@ def create_monster_entity(anim: "Animation", monster_data: list, monster_mask_da
         auto_trans=True,
         pos=(x, y, DEPTH['water_gap2']), # Z-depth near whale
         default_color_char='G', # Green default
-        velocity=(vx, vy, 0, 0.25), # 4th arg = animation speed modifier
-        anim_speed=1.0, # Base time between frames (modified by velocity[3])
+        velocity=(vx, vy, 0),
+        occlusion_mask=MaskMode.SILHOUETTE,
+        # The monster crosses the screen quickly; a 1s+ interval makes
+        # the humps barely animate before it leaves. Keep the classic
+        # undulating feel with a faster frame cycle.
+        anim_speed=0.25,
         die_offscreen=True,
         death_cb=create_random_object,
     )
@@ -559,6 +591,7 @@ def create_big_fish_1(old_ent: Entity | None, anim: "Animation") -> None:
         pos=(x, y, DEPTH['shark']), # Same depth as shark
         default_color_char='Y', # Fallback color
         velocity=(vx, vy, 0),
+        occlusion_mask=MaskMode.SILHOUETTE,
         die_offscreen=True,
         death_cb=create_random_object,
     )
@@ -602,6 +635,7 @@ def create_big_fish_2(old_ent: Entity | None, anim: "Animation") -> None:
         pos=(x, y, DEPTH['shark']),
         default_color_char='Y',
         velocity=(vx, vy, 0),
+        occlusion_mask=MaskMode.SILHOUETTE,
         die_offscreen=True,
         death_cb=create_random_object,
     )

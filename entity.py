@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import random
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Optional, Sequence, Union
 
 from constants import TICK_RATE
+from sprite import MaskMode, SpriteFrame
 
 Shape = Union[str, list[str]]
 Position = tuple[float, float, float]
@@ -61,6 +62,16 @@ class Entity:
     physical: bool = False
     transparent_char: str = ' '
     auto_trans: bool = False
+    # Default to row-based exterior marking. It matches the original
+    # ASCII art's intent better than flood-fill for open/diagonal fish
+    # outlines: leading/trailing spaces are exterior, same-row interior
+    # blanks remain body.
+    auto_trans_mode: str = 'row'
+    # Mask modes: "visible" draws/collides only with glyph cells;
+    # "silhouette" includes interior blanks but excludes '?' exterior
+    # transparency; "bbox" preserves the old rectangle behavior.
+    collision_mask: str | MaskMode = MaskMode.VISIBLE
+    occlusion_mask: str | MaskMode = MaskMode.VISIBLE
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -88,11 +99,15 @@ class Entity:
         # Exterior-space → '?' substitution if auto_trans was set.
         # Consumed here: subsequent draws don't re-trigger it.
         if self.auto_trans:
-            self.shapes = [self._mark_exterior_transparent(s) for s in self.shapes]
+            self.shapes = [
+                self._mark_exterior_transparent(s, self.auto_trans_mode)
+                for s in self.shapes
+            ]
             self.auto_trans = False
 
         self.current_frame = 0
         self.last_anim_time = time.monotonic()
+        self._frames: list[SpriteFrame] = []
 
         # Normalize default_color_char case (preserve already-correct case).
         c = self.default_color_char
@@ -107,17 +122,32 @@ class Entity:
         self._height = 0
         self._lines: list[str] = []
         self._color_lines: list[str] = []
+        self._frame = SpriteFrame.parse(None)
+        self._build_frames()
         self._update_dimensions()
         self.collisions: list = []
+        self.collision_events: list = []
 
     @staticmethod
-    def _mark_exterior_transparent(shape_str: str | None) -> str | None:
-        """ Replace each line's leading and trailing spaces with '?'
-        (the universal transparent char). Interior spaces keep being
-        rendered as opaque, so a fish silhouette occludes whatever is
-        behind it instead of letting characters bleed through. """
+    def _mark_exterior_transparent(
+        shape_str: str | None,
+        mode: str = 'row',
+    ) -> str | None:
+        """ Mark exterior spaces with '?', preserving body blanks.
+
+        The default `row` mode marks each line's leading/trailing spaces
+        transparent and keeps same-row interior spaces solid. That fits
+        the classic ASCII art, whose fish outlines are often diagonal or
+        intentionally open. Optional `flood` mode is available for closed
+        shapes where true exterior flood-fill is desired.
+        """
         if not shape_str:
             return shape_str
+        if mode == 'flood':
+            return Entity._mark_exterior_transparent_flood(shape_str)
+        if mode != 'row':
+            raise ValueError(f"unknown auto_trans_mode: {mode!r}")
+
         out = []
         for line in shape_str.split('\n'):
             stripped_left = line.lstrip(' ')
@@ -127,29 +157,87 @@ class Entity:
             out.append('?' * leading + stripped + '?' * trailing)
         return '\n'.join(out)
 
+    @staticmethod
+    def _mark_exterior_transparent_flood(shape_str: str) -> str:
+        """ Flood-fill exterior spaces for closed ASCII shapes.
+
+        This is intentionally opt-in; on many classic fish sprites the
+        outline is diagonal/open enough that flood-fill reaches spaces we
+        still want to treat as body for occlusion.
+        """
+        lines = shape_str.split('\n')
+        if not lines:
+            return shape_str
+
+        width = max((len(line) for line in lines), default=0)
+        height = len(lines)
+        grid = [list(line.ljust(width)) for line in lines]
+        exterior: set[tuple[int, int]] = set()
+        stack: list[tuple[int, int]] = []
+
+        def add_if_exterior_cell(x: int, y: int) -> None:
+            if not (0 <= x < width and 0 <= y < height):
+                return
+            if (x, y) in exterior:
+                return
+            # Existing '?' cells are already transparent and should not
+            # block the exterior flood-fill from reaching adjacent spaces.
+            if grid[y][x] not in (' ', '?'):
+                return
+            exterior.add((x, y))
+            stack.append((x, y))
+
+        for x in range(width):
+            add_if_exterior_cell(x, 0)
+            add_if_exterior_cell(x, height - 1)
+        for y in range(height):
+            add_if_exterior_cell(0, y)
+            add_if_exterior_cell(width - 1, y)
+
+        while stack:
+            x, y = stack.pop()
+            add_if_exterior_cell(x + 1, y)
+            add_if_exterior_cell(x - 1, y)
+            add_if_exterior_cell(x, y + 1)
+            add_if_exterior_cell(x, y - 1)
+
+        out = []
+        for y, line in enumerate(lines):
+            chars = []
+            for x, char in enumerate(line):
+                chars.append('?' if char == ' ' and (x, y) in exterior else char)
+            out.append(''.join(chars))
+        return '\n'.join(out)
+
+    def _build_frames(self) -> None:
+        """ Parse every shape frame into reusable sprite/mask data. """
+        self._frames = []
+        for shape_str, color_map_str in zip(self.shapes, self.color_maps):
+            self._frames.append(
+                SpriteFrame.parse(shape_str, color_map_str, self.transparent_char)
+            )
+        if not self._frames:
+            self._frames = [SpriteFrame.parse(None)]
+
     def _update_dimensions(self) -> None:
-        """ Recalculate dimensions based on the current frame's shape. """
-        shape_str = self.shapes[self.current_frame]
-        if not shape_str:
-            self._width = 0
-            self._height = 0
-            self._lines = []
-            self._color_lines = []
-            return
-
-        self._lines = shape_str.strip('\n').split('\n')
-        self._height = len(self._lines)
-        self._width = max(len(line) for line in self._lines) if self._lines else 0
-
-        color_map_str = self.color_maps[self.current_frame]
-        if color_map_str:
-            self._color_lines = color_map_str.strip('\n').split('\n')
-        else:
-            self._color_lines = []
+        """ Recalculate cached dimensions for the current frame. """
+        self._frame = self._frames[self.current_frame]
+        self._width = self._frame.width
+        self._height = self._frame.height
+        self._lines = self._frame.lines
+        self._color_lines = self._frame.color_lines
 
     def get_shape_and_colors(self) -> tuple[list[str], list[str]]:
         """ Lines and color lines for the current frame. """
         return self._lines, self._color_lines
+
+    def current_sprite_frame(self) -> SpriteFrame:
+        """ Parsed frame data, including shape masks. """
+        return self._frame
+
+    def mask_contains(self, mode: str | MaskMode, local_x: int, local_y: int) -> bool:
+        """ True if the current frame's named mask includes a cell. """
+        return self._frame.contains(mode, local_x, local_y)
 
     def width(self) -> int:
         return self._width
@@ -222,4 +310,5 @@ class Entity:
         if self.coll_handler and self.collisions:
             self.coll_handler(self, animation_instance)
         self.collisions = []
+        self.collision_events = []
 

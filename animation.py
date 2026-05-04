@@ -19,7 +19,9 @@ from creatures import (
     create_all_fish, create_all_seaweed, create_castle, create_environment,
     create_fish,
 )
+from collision import detect_collisions
 from entity import Entity
+import renderer
 
 
 # --- Animation Class ---
@@ -47,6 +49,10 @@ class Animation:
         self._init_colors()
         self._last_term_size = (self.height, self.width)
         self._last_animate_time = time.monotonic()
+        self.debug_mask_modes = [
+            None, 'visible', 'silhouette', 'collision', 'occlusion', 'bbox'
+        ]
+        self.debug_mask_index = 0
 
     def _init_colors(self):
         """ Initialize curses color pairs (or fall back to monochrome). """
@@ -136,27 +142,15 @@ class Animation:
         return False
 
     def check_collisions(self) -> None:
-        """ Generic axis-aligned bbox overlap among physical entities.
+        """ Populate per-entity collision queues using sprite masks. """
+        for entity in self.entities:
+            entity.collisions = []
+            entity.collision_events = []
 
-        Each entity opts in via physical=True and decides what to do
-        with collisions in its coll_handler (e.g. shark teeth vs fish,
-        bubble vs waterline).
-        """
-        physical = [e for e in self.entities if e.physical and e.is_alive]
-        boxes = []
-        for e in physical:
-            x, y, _ = e.position()
-            ix, iy = int(x), int(y)
-            boxes.append((ix, iy, ix + e.width(), iy + e.height(), e))
-
-        for i, (ax1, ay1, ax2, ay2, a) in enumerate(boxes):
-            for j in range(i + 1, len(boxes)):
-                bx1, by1, bx2, by2, b = boxes[j]
-                if ax1 < bx2 and bx1 < ax2 and ay1 < by2 and by1 < ay2:
-                    if a.coll_handler:
-                        a.collisions.append(b)
-                    if b.coll_handler:
-                        b.collisions.append(a)
+        for entity, event in detect_collisions(self.entities):
+            if entity.coll_handler:
+                entity.collisions.append(event.other)  # Backward-compatible API.
+                entity.collision_events.append(event)
 
     def animate(self) -> None:
         """ Update all entities, run collision handlers, reap the dead. """
@@ -192,121 +186,30 @@ class Animation:
             self.remove_entity(entity) # Remove from list
 
 
-    # Types treated as "background": their full bbox doesn't occlude
-    # other entities — only their non-transparent cells write to the
-    # screen, and they're drawn back-to-front under everything else.
-    _BACKGROUND_TYPES = {EntityType.WATERLINE, EntityType.SEAWEED}
-    _BACKGROUND_NAMES = {'castle'}
-
     def _is_background(self, entity: Entity) -> bool:
-        return (entity.type in self._BACKGROUND_TYPES
-                or entity.name in self._BACKGROUND_NAMES)
+        return renderer.is_background(entity)
+
+    @property
+    def debug_mask_mode(self) -> str | None:
+        return self.debug_mask_modes[self.debug_mask_index]
+
+    def cycle_debug_mask_mode(self) -> None:
+        self.debug_mask_index = (
+            self.debug_mask_index + 1
+        ) % len(self.debug_mask_modes)
+        self.needs_redraw = True
 
     def draw_screen(self) -> None:
-        """ Draw all entities, with bbox-claim occlusion for foreground.
-
-        Two passes:
-        1. Background (waterlines, castle, seaweed): plain back-to-front
-           painter's algorithm; transparency lets lower layers show
-           through. Same as the original engine.
-        2. Foreground (fish, shark, whale, monster, big_fish, bubble,
-           ship, teeth): front-to-back with a per-cell `claimed` set.
-           A closer foreground entity claims its WHOLE bounding box,
-           including its transparent cells, so a further-back
-           foreground entity can't bleed through anywhere within that
-           rectangle. The closer entity's transparent cells still let
-           the (already-drawn) background through, since the
-           background pass wrote those cells before this pass started.
-        """
-        self.stdscr.erase()
-
-        background = []
-        foreground = []
-        for e in self.entities:
-            if not e.is_alive:
-                continue
-            (background if self._is_background(e) else foreground).append(e)
-
-        # Pass 1: background, back-to-front (highest z first).
-        for entity in sorted(background, key=lambda e: e.z, reverse=True):
-            self._draw_entity_no_claim(entity)
-
-        # Pass 2: foreground, front-to-back, with bbox claim.
-        claimed: set[tuple[int, int]] = set()
-        for entity in sorted(foreground, key=lambda e: e.z):
-            self._draw_entity_with_claim(entity, claimed)
-
-        self.stdscr.refresh()
-        self.needs_redraw = False
+        """ Draw all entities, with mask-based occlusion for foreground. """
+        renderer.draw_screen(self)
 
     def _draw_entity_no_claim(self, entity: Entity) -> None:
-        """ Painter's-algorithm draw: write each non-transparent cell. """
-        lines, color_lines = entity.get_shape_and_colors()
-        start_x, start_y = int(entity.x), int(entity.y)
-        default_attr = self.get_color_attr(entity.default_color_char)
-        tchar = entity.transparent_char
-
-        for i, line in enumerate(lines):
-            current_y = start_y + i
-            if not (0 <= current_y < self.height):
-                continue
-            color_line = color_lines[i] if i < len(color_lines) else ""
-            for j, char in enumerate(line):
-                current_x = start_x + j
-                if not (0 <= current_x < self.width):
-                    continue
-                if char == '?' or char == tchar:
-                    continue
-                attr = default_attr
-                if j < len(color_line):
-                    cc = color_line[j]
-                    if cc != ' ' and cc != '?':
-                        attr = self.get_color_attr(cc)
-                try:
-                    self.stdscr.addch(current_y, current_x, char, attr)
-                except curses.error:
-                    pass
+        """Compatibility wrapper for renderer internals."""
+        renderer.draw_entity_no_claim(self, entity)
 
     def _draw_entity_with_claim(self, entity: Entity, claimed: set) -> None:
-        """ Foreground draw: every cell in the bbox is claimed (so back
-        foreground entities can't render there); only non-transparent
-        shape cells actually write a character. """
-        lines, _color_lines = entity.get_shape_and_colors()
-        # Use width()/height() so we iterate the full bounding box, not
-        # just the (possibly ragged) shape lines.
-        bbox_w = entity.width()
-        bbox_h = entity.height()
-        start_x, start_y = int(entity.x), int(entity.y)
-        default_attr = self.get_color_attr(entity.default_color_char)
-        tchar = entity.transparent_char
-        color_lines = entity.get_shape_and_colors()[1]
-
-        for i in range(bbox_h):
-            current_y = start_y + i
-            if not (0 <= current_y < self.height):
-                continue
-            line = lines[i] if i < len(lines) else ''
-            color_line = color_lines[i] if i < len(color_lines) else ''
-            for j in range(bbox_w):
-                current_x = start_x + j
-                if not (0 <= current_x < self.width):
-                    continue
-                cell = (current_y, current_x)
-                if cell in claimed:
-                    continue
-                claimed.add(cell)  # claim the whole bbox, transparent or not
-                char = line[j] if j < len(line) else ' '
-                if char == '?' or char == tchar:
-                    continue  # claimed but not drawn — bg shows through
-                attr = default_attr
-                if j < len(color_line):
-                    cc = color_line[j]
-                    if cc != ' ' and cc != '?':
-                        attr = self.get_color_attr(cc)
-                try:
-                    self.stdscr.addch(current_y, current_x, char, attr)
-                except curses.error:
-                    pass
+        """Compatibility wrapper for renderer internals."""
+        renderer.draw_entity_with_claim(self, entity, claimed)
 
 
     def _show_help(self):
@@ -319,6 +222,7 @@ class Animation:
             "  q       quit",
             "  p       pause / resume",
             "  r       redraw / restart",
+            "  m       cycle mask debug overlay",
             "  h, ?    show this help",
             "",
             "Press any key to return.",
@@ -465,6 +369,8 @@ class Animation:
                     self.remove_all_entities()
                     if not self._too_small():
                         self._populate()
+                elif key_char == 'm':
+                    self.cycle_debug_mask_mode()
                 # KEY_RESIZE is still handled here in case it does fire
                 # — but the per-frame poll above is the real workhorse.
                 elif key == curses.KEY_RESIZE:

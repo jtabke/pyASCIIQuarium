@@ -33,7 +33,10 @@ py-modules = [
     "animation",
     "assets",
     "cli",
+    "collision",
     "constants",
     "creatures",
     "entity",
+    "renderer",
+    "sprite",
 ]
